@@ -45,19 +45,18 @@ struct xo_mouse
 
 struct xo_board_data
 {
-  uint8_t tiles[3][3];
+  uint8_t squares[3][3];
 
-  /* To encode the status of each tile in the tiles array, we use the following
-   * bitwise scheme:
+  /* To encode the status of each square in the squares array, we use the
+   * following bitwise scheme:
    *
-   * 0b00000000 = Empty
-   * 0b00000001 = X
-   * 0b00000010 = O
-   * 0b00000100 = The tile is hovered
-   * 0b00001000 = The tile is clicked
-   * 0b00010000 = The tile is a winning tile
-   * 0b00100000 = The tile is a losing tile
-   * 0b01000000 = The tile is a draw tile
+   * 0b00000001 = Empty
+   * 0b00000010 = X
+   * 0b00000100 = O
+   * 0b00001000 = The tile is hovered
+   * 0b00010000 = The tile is clicked
+   * 0b00100000
+   * to
    * 0b10000000 = Reserved
    * This scheme is represented in the bit_meaning_type enum.
    */
@@ -691,7 +690,7 @@ xo_make_board (struct xo_app *app, SDL_Surface *surfaces[])
       return 1;
     }
 
-  memset (app->game->board->data->tiles, 0x1, sizeof (uint8_t) * 9);
+  memset (app->game->board->data->squares, 0x1, sizeof (uint8_t) * 9);
 
   for (int col = 0; col < 3; col++)
     {
@@ -1038,27 +1037,27 @@ static void
 xo_board_bit_set_at (struct xo_board_data *board_data,
                      enum xo_bit_meaning_type bit, int col, int row)
 {
-  board_data->tiles[col][row] |= bit;
+  board_data->squares[col][row] |= bit;
 }
 
 static void
 xo_board_bit_clear_at (struct xo_board_data *board_data,
                        enum xo_bit_meaning_type bit, int col, int row)
 {
-  board_data->tiles[col][row] &= ~bit;
+  board_data->squares[col][row] &= ~bit;
 }
 
 static SDL_bool
 xo_board_bit_check_at (struct xo_board_data *board,
                        enum xo_bit_meaning_type bit, int col, int row)
 {
-  return (board->tiles[col][row] & bit) != 0;
+  return (board->squares[col][row] & bit) != 0;
 }
 
 static void
 xo_board_bit_clear (struct xo_board_data *board, int col, int row)
 {
-  board->tiles[col][row] = XO_BIT_MEANING_EMPTY;
+  board->squares[col][row] = XO_BIT_MEANING_EMPTY;
 }
 
 /**
@@ -1184,19 +1183,20 @@ xo_board_draw (struct xo_app *app)
                             .y = (row * XO_TILE_SIZE * 4) - XO_BORDER };
 
           // Draw the board square at (x, y)
-          if ((app->game->board->data->tiles[col][row] & XO_BIT_MEANING_EMPTY)
+          if ((app->game->board->data->squares[col][row]
+               & XO_BIT_MEANING_EMPTY)
               == XO_BIT_MEANING_EMPTY)
             {
             }
           else
             {
-              if ((app->game->board->data->tiles[col][row]
+              if ((app->game->board->data->squares[col][row]
                    & XO_BIT_MEANING_SIDE_X)
                   == XO_BIT_MEANING_SIDE_X)
                 {
                   SDL_RenderCopy (app->renderer, app->game->Xs, NULL, &dest);
                 }
-              else if ((app->game->board->data->tiles[col][row]
+              else if ((app->game->board->data->squares[col][row]
                         & XO_BIT_MEANING_SIDE_O)
                        == XO_BIT_MEANING_SIDE_O)
                 {
@@ -1346,7 +1346,7 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
                   // TODO Error message
                   exit (0);
                 }
-              memcpy (new_board->tiles, last_board->tiles,
+              memcpy (new_board->squares, last_board->squares,
                       sizeof (uint8_t) * XO_BOARD_SIZE * XO_BOARD_SIZE);
 
               xo_board_bit_set_at (new_board, (uint8_t)simulated_side, col,
