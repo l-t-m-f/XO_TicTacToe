@@ -11,39 +11,39 @@
 #include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 
-#define GFX_PATH "gfx/tileset.png"
-#define FONT_PATH "font"
-#define CLIP_PATH "clip"
-#define TILE_SIZE 32
-#define FONT_SIZES 12
-#define FONT_SIZE_FACTOR 1.2
-#define WINDOW_SIZE 372
-#define BOARD_SIZE 3
-#define BORDER 4
+#define XO_GFX_PATH "gfx/tileset.png"
+#define XO_FONT_PATH "font"
+#define XO_CLIP_PATH "clip"
+#define XO_TILE_SIZE 32
+#define XO_FONT_SIZES 12
+#define XO_FONT_SIZE_FACTOR 1.2
+#define XO_WINDOW_SIZE 372
+#define XO_BOARD_SIZE 3
+#define XO_BORDER 4
 
-enum win_state_type
+enum xo_win_state_type
 {
-  WIN_STATE_LOSE = -1,
-  WIN_STATE_TIE = 0,
-  WIN_STATE_WIN = 1,
-  WIN_STATE_NONE = 2,
+  XO_WIN_STATE_LOSE = -1,
+  XO_WIN_STATE_TIE = 0,
+  XO_WIN_STATE_WIN = 1,
+  XO_WIN_STATE_NONE = 2,
 };
 
-enum game_state
+enum xo_game_state
 {
-  GAME_STATE_NULL,
-  GAME_STATE_MENU,
-  GAME_STATE_PLAY,
-  GAME_STATE_OVER
+  XO_GAME_STATE_NULL,
+  XO_GAME_STATE_MENU,
+  XO_GAME_STATE_PLAY,
+  XO_GAME_STATE_OVER
 };
 
-struct mouse
+struct xo_mouse
 {
   SDL_Point coordinates;
   SDL_Texture *cursor;
 };
 
-struct board_data
+struct xo_board_data
 {
   uint8_t tiles[3][3];
 
@@ -63,13 +63,13 @@ struct board_data
    */
 };
 
-struct board
+struct xo_board
 {
   SDL_Texture *image;
-  struct board_data *data;
+  struct xo_board_data *data;
 };
 
-struct cpu_response
+struct xo_cpu_response
 {
   int32_t score;
 
@@ -77,29 +77,26 @@ struct cpu_response
   SDL_Point move;
 };
 
-enum bit_meaning_type
+enum xo_bit_meaning_type
 {
-  EMPTY = 1 << 0, /* 0b00000001 */
-  X = 1 << 1,     /* 0b00000010 */
-  O = 1 << 2,     /* 0b00000100 */
-  HOVER = 1 << 3, /* 0b00001000 */
-  CLICK = 1 << 4, /* 0b00010000 */
-  WIN = 1 << 5,   /* 0b00100000 */
-  LOSE = 1 << 6,  /* 0b01000000 */
-  DRAW = 1 << 7   /* 0b10000000 */
+  XO_BIT_MEANING_EMPTY = 1 << 0,  /* 0b00000001 */
+  XO_BIT_MEANING_SIDE_X = 1 << 1, /* 0b00000010 */
+  XO_BIT_MEANING_SIDE_O = 1 << 2, /* 0b00000100 */
+  XO_BIT_MEANING_HOVER = 1 << 3,  /* 0b00001000 */
+  XO_BIT_MEANING_CLICK = 1 << 4,  /* 0b00010000 */
 };
 
-struct game
+struct xo_game
 {
-  enum game_state game_state;
+  enum xo_game_state game_state;
   SDL_Texture *logo;
   SDL_Texture *Os;
   SDL_Texture *Xs;
-  struct mouse mouse;
-  struct board *board;
+  struct xo_mouse mouse;
+  struct xo_board *board;
 };
 
-struct app
+struct xo_app
 {
   SDL_Window *window;
   SDL_Renderer *renderer;
@@ -110,10 +107,10 @@ struct app
   SDL_Texture **text_images;
   Mix_Music **musics;
   int music_max;
-  struct game *game;
+  struct xo_game *game;
 };
 
-struct stack
+struct xo_stack
 {
   void *bits;
   size_t size;
@@ -122,14 +119,14 @@ struct stack
 
 /* Debug mode */
 
-#define DEBUG_LOG_NONE 0
-#define DEBUG_LOG_BASE 1
-#define DEBUG_LOG_ALL 2
+#define XO_DEBUG_LOG_NONE 0
+#define XO_DEBUG_LOG_BASE 1
+#define XO_DEBUG_LOG_ALL 2
 
-#define DEBUG_LOG DEBUG_LOG_ALL
+#define XO_DEBUG_LOG XO_DEBUG_LOG_ALL
 
-struct stack *generic = { 0 };
-struct stack *move_prediction = { 0 };
+struct xo_stack *generic = { 0 };
+struct xo_stack *move_prediction = { 0 };
 
 /// LOGGING
 
@@ -147,7 +144,7 @@ xo_log_debug (int32_t db_order, SDL_bool b_is_warn, const char *format, ...)
 {
   va_list args;
   va_start (args, format);
-  if (DEBUG_LOG >= db_order)
+  if (XO_DEBUG_LOG >= db_order)
     {
       SDL_LogMessageV (SDL_LOG_CATEGORY_APPLICATION,
                        b_is_warn ? SDL_LOG_PRIORITY_WARN
@@ -181,10 +178,11 @@ xo_log_error (SDL_bool b_is_critical, const char *format, ...)
 
 /// MEMORY
 
-static struct stack *
+static struct xo_stack *
 xo_stack_new (size_t size)
 {
-  struct stack *stack = (struct stack *)calloc (1, sizeof (struct stack));
+  struct xo_stack *stack
+      = (struct xo_stack *)calloc (1, sizeof (struct xo_stack));
   if (stack)
     {
       stack->bits = calloc (1, size);
@@ -204,7 +202,7 @@ xo_stack_new (size_t size)
  * @return Returns a pointer to the allocated memory chunk
  */
 static void *
-xo_stack_alloc (struct stack *stack, size_t size)
+xo_stack_alloc (struct xo_stack *stack, size_t size)
 {
   SDL_assert (stack->offset + size <= stack->size && "Stack overflow!");
   void *ptr = (char *)stack->bits + stack->offset;
@@ -213,13 +211,13 @@ xo_stack_alloc (struct stack *stack, size_t size)
 }
 
 void
-xo_stack_reset (struct stack *stack)
+xo_stack_reset (struct xo_stack *stack)
 {
   stack->offset = 0;
 }
 
 void
-xo_stack_destroy (struct stack *stack)
+xo_stack_destroy (struct xo_stack *stack)
 {
   free (stack->bits);
   free (stack);
@@ -395,17 +393,17 @@ xo_surface_flip (SDL_Surface *surface)
 }
 
 static const char *
-xo_win_state_type_to_string (enum win_state_type type)
+xo_win_state_type_to_string (enum xo_win_state_type type)
 {
   switch (type)
     {
-    case WIN_STATE_LOSE:
+    case XO_WIN_STATE_LOSE:
       return "Lose";
-    case WIN_STATE_TIE:
+    case XO_WIN_STATE_TIE:
       return "Tie";
-    case WIN_STATE_WIN:
+    case XO_WIN_STATE_WIN:
       return "Win";
-    case WIN_STATE_NONE:
+    case XO_WIN_STATE_NONE:
       return "None";
     }
 }
@@ -434,25 +432,27 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
           {
             // tile 0,0
             SDL_Rect border_dest1
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER,
-                              .y = (row * TILE_SIZE) - TILE_SIZE + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER,
+                              .y = (row * XO_TILE_SIZE) - XO_TILE_SIZE
+                                   + XO_BORDER };
             SDL_Rect border_dest2
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE),
-                              .y = (row * TILE_SIZE) + BORDER };
-            SDL_Rect corner_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) - TILE_SIZE + BORDER,
-                              .y = (row * TILE_SIZE) - TILE_SIZE + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE),
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
+            SDL_Rect corner_dest = (SDL_Rect){
+              .w = XO_TILE_SIZE,
+              .h = XO_TILE_SIZE,
+              .x = (col * XO_TILE_SIZE) - XO_TILE_SIZE + XO_BORDER,
+              .y = (row * XO_TILE_SIZE) - XO_TILE_SIZE + XO_BORDER
+            };
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (surfaces[1], NULL, board, &center_grid_dest);
             SDL_BlitSurface (surfaces[5], NULL, board, &border_dest1);
             SDL_BlitSurface (surfaces[11], NULL, board, &border_dest2);
@@ -464,15 +464,15 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
           {
             // tile 1,0
             SDL_Rect border_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE),
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE),
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (surfaces[2], NULL, board, &center_grid_dest);
             SDL_BlitSurface (surfaces[11], NULL, board, &border_dest);
             break;
@@ -481,25 +481,26 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
           {
             // tile 2,0
             SDL_Rect border_dest1
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER,
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
             SDL_Rect border_dest2
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE),
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE),
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
             SDL_Rect corner_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) - TILE_SIZE + BORDER,
-                              .y = (row * TILE_SIZE) + TILE_SIZE };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) - XO_TILE_SIZE
+                                   + XO_BORDER,
+                              .y = (row * XO_TILE_SIZE) + XO_TILE_SIZE };
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (xo_surface_flip (surfaces[1]), NULL, board,
                              &center_grid_dest);
             SDL_BlitSurface (surfaces[3], NULL, board, &border_dest1);
@@ -519,16 +520,17 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
           {
             // tile 0,1
             SDL_Rect border_dest1
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER,
-                              .y = (row * TILE_SIZE) - TILE_SIZE + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER,
+                              .y = (row * XO_TILE_SIZE) - XO_TILE_SIZE
+                                   + XO_BORDER };
 
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (xo_rotate_surface (surfaces[2], 1), NULL, board,
                              &center_grid_dest);
             SDL_BlitSurface (surfaces[5], NULL, board, &border_dest1);
@@ -541,16 +543,16 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
           {
             // tile 2,1
             SDL_Rect border_dest1
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER,
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
 
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (xo_rotate_surface (surfaces[2], 3), NULL, board,
                              &center_grid_dest);
             SDL_BlitSurface (surfaces[5], NULL, board, &border_dest1);
@@ -567,25 +569,27 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
           {
             // tile 0,2
             SDL_Rect border_dest1
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER,
-                              .y = (row * TILE_SIZE) - TILE_SIZE + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER,
+                              .y = (row * XO_TILE_SIZE) - XO_TILE_SIZE
+                                   + XO_BORDER };
             SDL_Rect border_dest2
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + TILE_SIZE,
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_TILE_SIZE,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
             SDL_Rect corner_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + TILE_SIZE,
-                              .y = (row * TILE_SIZE) - TILE_SIZE + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_TILE_SIZE,
+                              .y = (row * XO_TILE_SIZE) - XO_TILE_SIZE
+                                   + XO_BORDER };
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (xo_surface_mirror (surfaces[1]), NULL, board,
                              &center_grid_dest);
             SDL_BlitSurface (surfaces[3], NULL, board, &border_dest1);
@@ -598,15 +602,15 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
             // tile 1,2
 
             SDL_Rect border_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + TILE_SIZE,
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_TILE_SIZE,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (xo_surface_mirror (surfaces[2]), NULL, board,
                              &center_grid_dest);
             SDL_BlitSurface (surfaces[11], NULL, board, &border_dest);
@@ -616,25 +620,25 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
           {
             // tile 2,0
             SDL_Rect border_dest1
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER,
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
             SDL_Rect border_dest2
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + TILE_SIZE,
-                              .y = (row * TILE_SIZE) + BORDER };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_TILE_SIZE,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER };
             SDL_Rect corner_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + TILE_SIZE,
-                              .y = (row * TILE_SIZE) + TILE_SIZE };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_TILE_SIZE,
+                              .y = (row * XO_TILE_SIZE) + XO_TILE_SIZE };
             SDL_Rect center_grid_dest
-                = (SDL_Rect){ .w = TILE_SIZE,
-                              .h = TILE_SIZE,
-                              .x = (col * TILE_SIZE) + BORDER / 2,
-                              .y = (row * TILE_SIZE) + BORDER / 2 };
+                = (SDL_Rect){ .w = XO_TILE_SIZE,
+                              .h = XO_TILE_SIZE,
+                              .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                              .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
             SDL_BlitSurface (xo_surface_flip (xo_surface_mirror (surfaces[1])),
                              NULL, board, &center_grid_dest);
             SDL_BlitSurface (surfaces[5], NULL, board, &border_dest1);
@@ -660,17 +664,17 @@ xo_make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
  * @return
  */
 static int32_t
-xo_make_board (struct app *app, SDL_Surface *surfaces[])
+xo_make_board (struct xo_app *app, SDL_Surface *surfaces[])
 {
   xo_log_debug (1, SDL_FALSE, "Making board...\n");
 
   // Alloc memory for the board struct within game
   app->game->board
-      = (struct board *)xo_stack_alloc (generic, sizeof (struct board));
+      = (struct xo_board *)xo_stack_alloc (generic, sizeof (struct xo_board));
 
   SDL_Surface *board = SDL_CreateRGBSurfaceWithFormat (
-      0, (TILE_SIZE * BOARD_SIZE) + BORDER, (TILE_SIZE * BOARD_SIZE) + BORDER,
-      32, SDL_PIXELFORMAT_RGBA32);
+      0, (XO_TILE_SIZE * XO_BOARD_SIZE) + XO_BORDER,
+      (XO_TILE_SIZE * XO_BOARD_SIZE) + XO_BORDER, 32, SDL_PIXELFORMAT_RGBA32);
 
   if (board == NULL)
     {
@@ -680,8 +684,8 @@ xo_make_board (struct app *app, SDL_Surface *surfaces[])
       return 1;
     }
 
-  app->game->board->data = (struct board_data *)xo_stack_alloc (
-      generic, sizeof (struct board_data));
+  app->game->board->data = (struct xo_board_data *)xo_stack_alloc (
+      generic, sizeof (struct xo_board_data));
   if (app->game->board->data == NULL)
     {
       return 1;
@@ -693,10 +697,11 @@ xo_make_board (struct app *app, SDL_Surface *surfaces[])
     {
       for (int row = 0; row < 3; row++)
         {
-          SDL_Rect dest = (SDL_Rect){ .w = TILE_SIZE,
-                                      .h = TILE_SIZE,
-                                      .x = (col * TILE_SIZE) + BORDER / 2,
-                                      .y = (row * TILE_SIZE) + BORDER / 2 };
+          SDL_Rect dest
+              = (SDL_Rect){ .w = XO_TILE_SIZE,
+                            .h = XO_TILE_SIZE,
+                            .x = (col * XO_TILE_SIZE) + XO_BORDER / 2,
+                            .y = (row * XO_TILE_SIZE) + XO_BORDER / 2 };
 
           // Place background tile regardless
           SDL_BlitSurface (surfaces[0], NULL, board, &dest);
@@ -725,10 +730,10 @@ xo_make_board (struct app *app, SDL_Surface *surfaces[])
 }
 
 static int32_t
-xo_make_gui (struct app *app, SDL_Surface *surfaces[])
+xo_make_gui (struct xo_app *app, SDL_Surface *surfaces[])
 {
   SDL_Surface *logo = SDL_CreateRGBSurfaceWithFormat (
-      0, (TILE_SIZE * 3), (TILE_SIZE * 2), 32, SDL_PIXELFORMAT_RGBA32);
+      0, (XO_TILE_SIZE * 3), (XO_TILE_SIZE * 2), 32, SDL_PIXELFORMAT_RGBA32);
 
   if (!logo)
     {
@@ -742,11 +747,11 @@ xo_make_gui (struct app *app, SDL_Surface *surfaces[])
   for (int i = 0; i < 6; i++)
     {
       int tileIndex = tileIndices[i];
-      SDL_Rect src = (SDL_Rect){ 0, 0, TILE_SIZE, TILE_SIZE };
-      SDL_Rect dest = (SDL_Rect){ .w = TILE_SIZE,
-                                  .h = TILE_SIZE,
-                                  .x = (x * TILE_SIZE),
-                                  .y = (y * TILE_SIZE) };
+      SDL_Rect src = (SDL_Rect){ 0, 0, XO_TILE_SIZE, XO_TILE_SIZE };
+      SDL_Rect dest = (SDL_Rect){ .w = XO_TILE_SIZE,
+                                  .h = XO_TILE_SIZE,
+                                  .x = (x * XO_TILE_SIZE),
+                                  .y = (y * XO_TILE_SIZE) };
       SDL_BlitSurface (surfaces[tileIndex], &src, logo, &dest);
 
       x++;
@@ -790,7 +795,7 @@ xo_cleanup_images (SDL_Point surface_dim, SDL_Surface **surface_pieces)
 }
 
 static int32_t
-xo_load_clips (struct app *app)
+xo_load_clips (struct xo_app *app)
 {
   int32_t result = 0;
   // Directory access
@@ -798,7 +803,7 @@ xo_load_clips (struct app *app)
   struct dirent *entry = NULL;
   char file_path[256];
   // Start by opening the music directory
-  cur_dir = opendir (CLIP_PATH);
+  cur_dir = opendir (XO_CLIP_PATH);
   if (!cur_dir)
     {
       xo_log_error (SDL_FALSE, "Error: could not open directory\n");
@@ -808,7 +813,7 @@ xo_load_clips (struct app *app)
   // Loop once through the directory to count the files
   while ((entry = readdir (cur_dir)) != NULL)
     {
-      sprintf (file_path, "%s/%s", CLIP_PATH, entry->d_name);
+      sprintf (file_path, "%s/%s", XO_CLIP_PATH, entry->d_name);
 
       struct stat st;
       stat (file_path, &st);
@@ -830,11 +835,11 @@ xo_load_clips (struct app *app)
       generic, (size_t)app->music_max * sizeof (Mix_Music *));
 
   // Loop through the directory again to load the music
-  cur_dir = opendir (CLIP_PATH);
+  cur_dir = opendir (XO_CLIP_PATH);
   int m = 0; // current file index
   while ((entry = readdir (cur_dir)) != NULL)
     {
-      sprintf (file_path, "%s/%s", CLIP_PATH, entry->d_name);
+      sprintf (file_path, "%s/%s", XO_CLIP_PATH, entry->d_name);
 
       struct stat st;
       stat (file_path, &st);
@@ -865,7 +870,7 @@ xo_load_clips (struct app *app)
 }
 
 static int32_t
-xo_load_fonts (struct app *app)
+xo_load_fonts (struct xo_app *app)
 {
 
   int32_t result = 0;
@@ -876,7 +881,7 @@ xo_load_fonts (struct app *app)
   char file_path[256];
 
   // Start by opening the font directory
-  cur_dir = opendir (FONT_PATH);
+  cur_dir = opendir (XO_FONT_PATH);
 
   if (!cur_dir)
     {
@@ -888,7 +893,7 @@ xo_load_fonts (struct app *app)
   // to count the number of fonts
   while ((entry = readdir (cur_dir)) != NULL)
     {
-      sprintf (file_path, "%s/%s", FONT_PATH, entry->d_name);
+      sprintf (file_path, "%s/%s", XO_FONT_PATH, entry->d_name);
 
       struct stat st;
       stat (file_path, &st);
@@ -906,11 +911,11 @@ xo_load_fonts (struct app *app)
   app->fonts = (TTF_Font ***)xo_stack_alloc (
       generic, (size_t)app->font_max * sizeof (TTF_Font **));
 
-  cur_dir = opendir (FONT_PATH);
+  cur_dir = opendir (XO_FONT_PATH);
   int f = 0; // current file index
   while ((entry = readdir (cur_dir)) != NULL)
     {
-      sprintf (file_path, "%s/%s", FONT_PATH, entry->d_name);
+      sprintf (file_path, "%s/%s", XO_FONT_PATH, entry->d_name);
 
       struct stat st;
       stat (file_path, &st);
@@ -922,11 +927,11 @@ xo_load_fonts (struct app *app)
 
           // Allocate memory for the font and its size variants
           *(app->fonts + f) = (TTF_Font **)xo_stack_alloc (
-              generic, (size_t)FONT_SIZES * sizeof (TTF_Font *));
+              generic, (size_t)XO_FONT_SIZES * sizeof (TTF_Font *));
 
           int current_size = 8;
           // Load the font at different sizes
-          for (int i = 0; i < FONT_SIZES; i++)
+          for (int i = 0; i < XO_FONT_SIZES; i++)
             {
               // The font size is multiplied by the FONT_SIZE_FACTOR
               (*(app->fonts + f))[i] = TTF_OpenFont (file_path, current_size);
@@ -942,7 +947,8 @@ xo_load_fonts (struct app *app)
                   xo_log_debug (1, SDL_FALSE,
                                 "Font '%s' at size %d loaded successfully!\n",
                                 entry->d_name, current_size);
-                  current_size = (int)((float)current_size * FONT_SIZE_FACTOR);
+                  current_size
+                      = (int)((float)current_size * XO_FONT_SIZE_FACTOR);
                 }
             }
           f++;
@@ -954,12 +960,12 @@ xo_load_fonts (struct app *app)
 }
 
 static int32_t
-xo_load_images (struct app *app)
+xo_load_images (struct xo_app *app)
 {
 
   xo_log_debug (1, SDL_FALSE, "Loading images...\n");
 
-  SDL_Surface *tileset = IMG_Load (GFX_PATH);
+  SDL_Surface *tileset = IMG_Load (XO_GFX_PATH);
 
   if (tileset == NULL)
     {
@@ -972,8 +978,8 @@ xo_load_images (struct app *app)
   int tileset_w, tileset_h;
   SDL_QueryTexture (SDL_CreateTextureFromSurface (app->renderer, tileset),
                     NULL, NULL, &tileset_w, &tileset_h);
-  int cols = tileset_w / TILE_SIZE;
-  int rows = tileset_h / TILE_SIZE;
+  int cols = tileset_w / XO_TILE_SIZE;
+  int rows = tileset_h / XO_TILE_SIZE;
 
   xo_log_debug (1, SDL_FALSE, "Tileset loaded. Dimensions: %d x %d\n",
                 tileset_w, tileset_h);
@@ -1000,13 +1006,13 @@ xo_load_images (struct app *app)
                         "Blitting extracted of surface to surface piece %d!\n",
                         current_id);
 
-          SDL_Rect extract_rect = (SDL_Rect){ .w = TILE_SIZE,
-                                              .h = TILE_SIZE,
-                                              .x = col * TILE_SIZE,
-                                              .y = row * TILE_SIZE };
+          SDL_Rect extract_rect = (SDL_Rect){ .w = XO_TILE_SIZE,
+                                              .h = XO_TILE_SIZE,
+                                              .x = col * XO_TILE_SIZE,
+                                              .y = row * XO_TILE_SIZE };
           // Allocate and initialize the surface
           surface_pieces[current_id] = SDL_CreateRGBSurfaceWithFormat (
-              0, TILE_SIZE, TILE_SIZE, 32, SDL_PIXELFORMAT_RGBA32);
+              0, XO_TILE_SIZE, XO_TILE_SIZE, 32, SDL_PIXELFORMAT_RGBA32);
           SDL_BlitSurface (tileset, &extract_rect, surface_pieces[current_id],
                            NULL);
         }
@@ -1029,41 +1035,49 @@ xo_load_images (struct app *app)
  * @param row Y coordinate for the square
  */
 static void
-xo_board_bit_set_at (struct board_data *board_data, enum bit_meaning_type bit,
-                     int col, int row)
+xo_board_bit_set_at (struct xo_board_data *board_data,
+                     enum xo_bit_meaning_type bit, int col, int row)
 {
   board_data->tiles[col][row] |= bit;
 }
 
 static void
-xo_board_bit_clear_at (struct board_data *board_data,
-                       enum bit_meaning_type bit, int col, int row)
+xo_board_bit_clear_at (struct xo_board_data *board_data,
+                       enum xo_bit_meaning_type bit, int col, int row)
 {
   board_data->tiles[col][row] &= ~bit;
 }
 
 static SDL_bool
-xo_board_bit_check_at (struct board_data *board, enum bit_meaning_type bit,
-                       int col, int row)
+xo_board_bit_check_at (struct xo_board_data *board,
+                       enum xo_bit_meaning_type bit, int col, int row)
 {
   return (board->tiles[col][row] & bit) != 0;
 }
 
 static void
-xo_board_bit_clear (struct board_data *board, int col, int row)
+xo_board_bit_clear (struct xo_board_data *board, int col, int row)
 {
-  board->tiles[col][row] = EMPTY;
+  board->tiles[col][row] = XO_BIT_MEANING_EMPTY;
 }
 
+/**
+ * Verifies if the board is full. When this information is relevant, it is when
+ * it would indicate a tie most of the time.
+ * @param board_data
+ * @return
+ */
 static SDL_bool
-xo_check_board_full (struct board_data *board_data)
+xo_board_check_if_full (struct xo_board_data *board_data)
 {
   SDL_bool is_full = SDL_TRUE;
-  for (uint8_t col = 0; col < BOARD_SIZE; col++)
+  for (uint8_t col = 0; col < XO_BOARD_SIZE; col++)
     {
-      for (uint8_t row = 0; row < BOARD_SIZE; row++)
+      for (uint8_t row = 0; row < XO_BOARD_SIZE; row++)
         {
-          if (xo_board_bit_check_at (board_data, EMPTY, col, row) == SDL_TRUE)
+          if (xo_board_bit_check_at (board_data, XO_BIT_MEANING_EMPTY, col,
+                                     row)
+              == SDL_TRUE)
             {
               is_full = SDL_FALSE;
             }
@@ -1079,15 +1093,15 @@ xo_check_board_full (struct board_data *board_data)
  * @return SDL_TRUE (win) or SDL_FALSE (lose)
  */
 static SDL_bool
-xo_check_side_win_state (struct board_data *board_data,
-                         enum bit_meaning_type side)
+xo_board_validate_win_conditions_for (struct xo_board_data *board_data,
+                                      enum xo_bit_meaning_type side)
 {
   /* Check columns */
   SDL_bool column_win;
-  for (uint8_t row = 0; row < BOARD_SIZE; row++)
+  for (uint8_t row = 0; row < XO_BOARD_SIZE; row++)
     {
       column_win = SDL_TRUE;
-      for (uint8_t col = 0; col < BOARD_SIZE && column_win; col++)
+      for (uint8_t col = 0; col < XO_BOARD_SIZE && column_win; col++)
         {
           if (xo_board_bit_check_at (board_data, side, col, row) == SDL_FALSE)
             {
@@ -1102,10 +1116,10 @@ xo_check_side_win_state (struct board_data *board_data,
   /* Check rows */
   /* Same as above except col-first order */
   SDL_bool row_win;
-  for (uint8_t col = 0; col < BOARD_SIZE; col++)
+  for (uint8_t col = 0; col < XO_BOARD_SIZE; col++)
     {
       row_win = SDL_TRUE;
-      for (uint8_t row = 0; row < BOARD_SIZE && row_win; row++)
+      for (uint8_t row = 0; row < XO_BOARD_SIZE && row_win; row++)
         {
           if (xo_board_bit_check_at (board_data, side, col, row) == SDL_FALSE)
             {
@@ -1120,7 +1134,7 @@ xo_check_side_win_state (struct board_data *board_data,
 
   /* Check diagonals */
   SDL_bool diag_win = SDL_TRUE;
-  for (uint8_t dia = 0; dia < BOARD_SIZE; dia++)
+  for (uint8_t dia = 0; dia < XO_BOARD_SIZE; dia++)
     {
       if (xo_board_bit_check_at (board_data, side, dia, dia) == SDL_FALSE)
         {
@@ -1134,11 +1148,12 @@ xo_check_side_win_state (struct board_data *board_data,
     }
 
   diag_win = SDL_TRUE;
-  for (uint8_t dia = 0; dia < BOARD_SIZE; dia++)
+  for (uint8_t dia = 0; dia < XO_BOARD_SIZE; dia++)
     {
       /* Order on column value start from the end of the board for diagonal 2.
        */
-      if (xo_board_bit_check_at (board_data, side, BOARD_SIZE - (dia + 1), dia)
+      if (xo_board_bit_check_at (board_data, side, XO_BOARD_SIZE - (dia + 1),
+                                 dia)
           == SDL_FALSE)
         {
           diag_win = SDL_FALSE;
@@ -1153,28 +1168,89 @@ xo_check_side_win_state (struct board_data *board_data,
   return SDL_FALSE;
 }
 
+static void
+xo_board_draw (struct xo_app *app)
+{
+
+  for (int col = 0; col < 3; col++)
+    {
+      for (int row = 0; row < 3; row++)
+        {
+
+          SDL_Rect dest
+              = (SDL_Rect){ .w = XO_TILE_SIZE * 4,
+                            .h = XO_TILE_SIZE * 4,
+                            .x = (col * XO_TILE_SIZE * 4) - XO_BORDER / 2,
+                            .y = (row * XO_TILE_SIZE * 4) - XO_BORDER };
+
+          // Draw the board square at (x, y)
+          if ((app->game->board->data->tiles[col][row] & XO_BIT_MEANING_EMPTY)
+              == XO_BIT_MEANING_EMPTY)
+            {
+            }
+          else
+            {
+              if ((app->game->board->data->tiles[col][row]
+                   & XO_BIT_MEANING_SIDE_X)
+                  == XO_BIT_MEANING_SIDE_X)
+                {
+                  SDL_RenderCopy (app->renderer, app->game->Xs, NULL, &dest);
+                }
+              else if ((app->game->board->data->tiles[col][row]
+                        & XO_BIT_MEANING_SIDE_O)
+                       == XO_BIT_MEANING_SIDE_O)
+                {
+                  SDL_RenderCopy (app->renderer, app->game->Os, NULL, &dest);
+                }
+            }
+        }
+    }
+}
+
 /**
  *
  * @param board_data
  * @return
  */
-static enum win_state_type
-xo_test_if_game_over (struct board_data *board_data)
+static enum xo_win_state_type
+xo_board_test_if_final_state (struct xo_board_data *board_data)
 {
-  if (xo_check_side_win_state (board_data, X) == SDL_TRUE)
+  if (xo_board_validate_win_conditions_for (board_data, XO_BIT_MEANING_SIDE_X)
+      == SDL_TRUE)
     {
-      return WIN_STATE_WIN;
+      return XO_WIN_STATE_WIN;
     }
-  if (xo_check_side_win_state (board_data, O) == SDL_TRUE)
+  if (xo_board_validate_win_conditions_for (board_data, XO_BIT_MEANING_SIDE_O)
+      == SDL_TRUE)
     {
-      return WIN_STATE_LOSE;
+      return XO_WIN_STATE_LOSE;
     }
-  if (xo_check_board_full (board_data) == SDL_TRUE)
+  if (xo_board_check_if_full (board_data) == SDL_TRUE)
     {
-      return WIN_STATE_TIE;
+      return XO_WIN_STATE_TIE;
     }
 
-  return WIN_STATE_NONE;
+  return XO_WIN_STATE_NONE;
+}
+
+static SDL_bool
+xo_game_play (struct xo_app *app, enum xo_bit_meaning_type side, int col,
+              int row)
+{
+  if (xo_board_bit_check_at (app->game->board->data, XO_BIT_MEANING_EMPTY, col,
+                             row))
+    {
+      xo_log_debug (1, SDL_FALSE, "Playing!");
+      xo_board_bit_clear_at (app->game->board->data, XO_BIT_MEANING_EMPTY, col,
+                             row);
+      xo_board_bit_set_at (app->game->board->data, side, col, row);
+      return SDL_TRUE;
+    }
+  else
+    {
+      xo_log_debug (1, SDL_FALSE, "Tile is occupied. Click ignored...");
+      return SDL_FALSE;
+    }
 }
 
 /**
@@ -1185,19 +1261,19 @@ xo_test_if_game_over (struct board_data *board_data)
  * @return Whether the player move was successful. The move can fail if the
  * tile clicked already contains something.
  */
-static SDL_bool
-xo_player_move (struct app *app, int mouse_x, int mouse_y)
+static SDL_Point
+xo_mouse_to_square (struct xo_app *app, int mouse_x, int mouse_y)
 {
 
   int col = -1;
   int row = -1;
 
-  if (mouse_x < WINDOW_SIZE / 3)
+  if (mouse_x < XO_WINDOW_SIZE / 3)
     {
       // Player clicked in the left third of the window
       col = 0;
     }
-  else if (mouse_x < WINDOW_SIZE * 2 / 3)
+  else if (mouse_x < XO_WINDOW_SIZE * 2 / 3)
     {
       // Player clicked in the middle third of the window
       col = 1;
@@ -1208,12 +1284,12 @@ xo_player_move (struct app *app, int mouse_x, int mouse_y)
       col = 2;
     }
 
-  if (mouse_y < WINDOW_SIZE / 3)
+  if (mouse_y < XO_WINDOW_SIZE / 3)
     {
       // Player clicked in the top third of the window
       row = 0;
     }
-  else if (mouse_y < WINDOW_SIZE * 2 / 3)
+  else if (mouse_y < XO_WINDOW_SIZE * 2 / 3)
     {
       // Player clicked in the middle third of the window
       row = 1;
@@ -1224,98 +1300,21 @@ xo_player_move (struct app *app, int mouse_x, int mouse_y)
       row = 2;
     }
   xo_log_debug (1, SDL_FALSE, "Tile clicked: %d, %d.", col, row);
-  if (xo_board_bit_check_at (app->game->board->data, EMPTY, col, row))
-    {
-      xo_log_debug (1, SDL_FALSE, "It was empty! Placing X");
-      xo_board_bit_clear_at (app->game->board->data, EMPTY, col, row);
-      xo_board_bit_set_at (app->game->board->data, X, col, row);
-      return SDL_TRUE;
-    }
-  else
-    {
-      xo_log_debug (1, SDL_FALSE, "Tile is occupied. Click ignored...");
-    }
-  return SDL_FALSE;
+
+  return (SDL_Point){ col, row };
 }
 
-static void
-xo_computer_move (struct app *app, int col, int row)
+static struct xo_cpu_response
+xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
+                          enum xo_bit_meaning_type simulated_side)
 {
-  if (xo_board_bit_check_at (app->game->board->data, EMPTY, col, row))
-    {
-      xo_board_bit_clear_at (app->game->board->data, EMPTY, col, row);
-      xo_board_bit_set_at (app->game->board->data, O, col, row);
-    }
-}
-
-static void
-xo_draw_board (struct app *app)
-{
-
-  for (int col = 0; col < 3; col++)
-    {
-      for (int row = 0; row < 3; row++)
-        {
-
-          SDL_Rect dest = (SDL_Rect){ .w = TILE_SIZE * 4,
-                                      .h = TILE_SIZE * 4,
-                                      .x = (col * TILE_SIZE * 4) - BORDER / 2,
-                                      .y = (row * TILE_SIZE * 4) - BORDER };
-
-          // Draw the board square at (x, y)
-          if ((app->game->board->data->tiles[col][row] & EMPTY) == EMPTY)
-            {
-            }
-          else
-            {
-              if ((app->game->board->data->tiles[col][row] & X) == X)
-                {
-                  SDL_RenderCopy (app->renderer, app->game->Xs, NULL, &dest);
-                }
-              else if ((app->game->board->data->tiles[col][row] & O) == O)
-                {
-                  SDL_RenderCopy (app->renderer, app->game->Os, NULL, &dest);
-                }
-            }
-        }
-    }
-}
-
-static void
-xo_generate_moves_bad (struct app *app)
-{
-  SDL_bool finished = SDL_FALSE;
-  for (int row = 0; row < 3; row++)
-    {
-      if (finished == SDL_TRUE)
-        {
-          break;
-        }
-      for (int col = 0; col < 3; col++)
-        {
-          if (xo_board_bit_check_at (app->game->board->data, EMPTY, col, row)
-              == SDL_TRUE)
-            {
-              xo_computer_move (app, col, row);
-              finished = SDL_TRUE;
-              break;
-            }
-        }
-    }
-
-  xo_test_if_game_over (app->game->board->data);
-}
-
-static struct cpu_response
-xo_minimax (struct board_data *last_board,
-            enum bit_meaning_type simulated_side)
-{
-  struct cpu_response new_response;
+  struct xo_cpu_response new_response;
   /* Checks if the game is over (someone won or the board is full) */
-  enum win_state_type board_win_state = xo_test_if_game_over (last_board);
+  enum xo_win_state_type board_win_state
+      = xo_board_test_if_final_state (last_board);
 
   /* A None state would mean the game is still on-going*/
-  if (board_win_state != WIN_STATE_NONE)
+  if (board_win_state != XO_WIN_STATE_NONE)
     {
       SDL_LogInfo (SDL_LOG_CATEGORY_APPLICATION,
                    "AI found a terminal move of type: %s",
@@ -1326,7 +1325,8 @@ xo_minimax (struct board_data *last_board,
     }
 
   /* Set the best score depending on which side is simulated. */
-  int32_t best_score = simulated_side == O ? INT32_MIN : INT32_MAX;
+  int32_t best_score
+      = simulated_side == XO_BIT_MEANING_SIDE_O ? INT32_MIN : INT32_MAX;
   SDL_Point best_move;
   SDL_bool move_found = SDL_FALSE;
 
@@ -1334,26 +1334,31 @@ xo_minimax (struct board_data *last_board,
     {
       for (uint8_t row = 0; row < 3; row++)
         {
-          if (xo_board_bit_check_at (last_board, EMPTY, col, row) == SDL_TRUE)
+          if (xo_board_bit_check_at (last_board, XO_BIT_MEANING_EMPTY, col,
+                                     row)
+              == SDL_TRUE)
             {
-              struct board_data *new_board
-                  = (struct board_data *)xo_stack_alloc (
-                      generic, sizeof (struct board_data));
+              struct xo_board_data *new_board
+                  = (struct xo_board_data *)xo_stack_alloc (
+                      generic, sizeof (struct xo_board_data));
               if (new_board == NULL)
                 {
                   // TODO Error message
                   exit (0);
                 }
               memcpy (new_board->tiles, last_board->tiles,
-                      sizeof (uint8_t) * BOARD_SIZE * BOARD_SIZE);
+                      sizeof (uint8_t) * XO_BOARD_SIZE * XO_BOARD_SIZE);
 
               xo_board_bit_set_at (new_board, (uint8_t)simulated_side, col,
                                    row);
 
-              struct cpu_response simulated_response
-                  = xo_minimax (new_board, simulated_side == O ? X : O);
+              struct xo_cpu_response simulated_response
+                  = xo_game_cpu_minimax_eval (
+                      new_board, simulated_side == XO_BIT_MEANING_SIDE_O
+                                     ? XO_BIT_MEANING_SIDE_X
+                                     : XO_BIT_MEANING_SIDE_O);
 
-              if (simulated_side == O)
+              if (simulated_side == XO_BIT_MEANING_SIDE_O)
                 {
                   if (simulated_response.score > best_score)
                     {
@@ -1363,7 +1368,7 @@ xo_minimax (struct board_data *last_board,
                       move_found = SDL_TRUE;
                     }
                 }
-              else if (simulated_side == X)
+              else if (simulated_side == XO_BIT_MEANING_SIDE_X)
                 {
                   if (simulated_response.score < best_score)
                     {
@@ -1386,31 +1391,59 @@ xo_minimax (struct board_data *last_board,
 }
 
 /**
+ * Bad version of the cpu AI which just picks the first available square
+ * left-right, top-down. I put this while testing the minimax when it is
+ * crashing. Leaving it here in case I rework AI and need it again.
+ * @param app
+ */
+static SDL_Point
+xo_game_cpu_find_next_play_BAD (struct xo_app *app)
+{
+  for (int row = 0; row < 3; row++)
+    {
+      for (int col = 0; col < 3; col++)
+        {
+          if (xo_board_bit_check_at (app->game->board->data,
+                                     XO_BIT_MEANING_EMPTY, col, row)
+              == SDL_TRUE)
+            {
+              return (SDL_Point){ col, row };
+            }
+        }
+    }
+
+  return (SDL_Point){ -1, -1 };
+}
+
+/**
  * Plays the AI move.
  * @param current_board the last board
  * @return
  */
 static void
-xo_generate_moves (struct app *app)
+xo_game_cpu_find_next_play (struct xo_app *app)
 {
   move_prediction = xo_stack_new (1000);
 
-  struct cpu_response response = xo_minimax (app->game->board->data, O);
-  xo_computer_move (app, response.move.x, response.move.y);
+  struct xo_cpu_response response = xo_game_cpu_minimax_eval (
+      app->game->board->data, XO_BIT_MEANING_SIDE_O);
+  xo_game_play (app, XO_BIT_MEANING_SIDE_O, response.move.x, response.move.y);
 
-  xo_test_if_game_over (app->game->board->data);
+  xo_board_test_if_final_state (app->game->board->data);
 
   xo_stack_destroy (move_prediction);
 }
 
 int32_t
-xo_close_app (int32_t code)
+xo_exit (int32_t code)
 {
   xo_stack_destroy (generic);
   SDL_Quit ();
   exit (code);
   return code;
 }
+
+/* This is the actual program logical sequence : */
 
 int
 main (int argc, char *argv[])
@@ -1427,66 +1460,64 @@ main (int argc, char *argv[])
 
   /* Memory allocation for app */
 
-  /* Ignore leak warnings on context_alloc, this is an arena freed at the end.
-   * IDE is just not able to keep track. I'm not disabling the warnings with
-   * #pragma for portability. */
-  struct app *app
-      = (struct app *)xo_stack_alloc (generic, sizeof (struct app));
+  struct xo_app *app
+      = (struct xo_app *)xo_stack_alloc (generic, sizeof (struct xo_app));
 
   if (app == NULL)
     {
       xo_log_error (SDL_TRUE, "Failed to allocate memory for app\n");
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
-  app->game = (struct game *)xo_stack_alloc (generic, sizeof (struct game));
+  app->game
+      = (struct xo_game *)xo_stack_alloc (generic, sizeof (struct xo_game));
 
   if (app->game == NULL)
     {
       xo_log_error (SDL_TRUE, "Failed to allocate memory for game\n");
-      return xo_close_app (1);
+      return xo_exit (1);
     }
-  app->game->game_state = GAME_STATE_NULL;
+  app->game->game_state = XO_GAME_STATE_NULL;
 
   // SDL2 init
   if (SDL_Init (init_flags) < 0)
     {
       xo_log_error (SDL_TRUE, "SDL_Init Error: %s\n", SDL_GetError ());
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
   if (TTF_Init () < 0)
     {
       xo_log_error (SDL_TRUE, "TTF_Init Error: %s\n", TTF_GetError ());
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
   if (IMG_Init (image_flags) != image_flags)
     {
       xo_log_error (SDL_TRUE, "IMG_Init Error: %s\n", IMG_GetError ());
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
   if (Mix_Init (mixer_flags) != mixer_flags)
     {
       xo_log_error (SDL_TRUE, "Mix_Init Error: %s\n", Mix_GetError ());
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
   if (Mix_OpenAudio (44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
     {
       xo_log_error (SDL_TRUE, "Mix_OpenAudio Error: %s\n", Mix_GetError ());
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
-  app->window = SDL_CreateWindow ("Tic-Tac-Toe", SDL_WINDOWPOS_CENTERED,
-                                  SDL_WINDOWPOS_CENTERED, WINDOW_SIZE,
-                                  WINDOW_SIZE, window_flags);
+  app->window
+      = SDL_CreateWindow ("XO", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                          XO_WINDOW_SIZE, XO_WINDOW_SIZE, window_flags);
 
   if (app->window == NULL)
     {
       xo_log_error (SDL_TRUE, "SDL_CreateWindow Error: %s\n", SDL_GetError ());
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
   app->renderer = SDL_CreateRenderer (app->window, -1, renderer_flags);
@@ -1495,18 +1526,13 @@ main (int argc, char *argv[])
     {
       xo_log_error (SDL_TRUE, "SDL_CreateRenderer Error: %s\n",
                     SDL_GetError ());
-      return xo_close_app (1);
+      return xo_exit (1);
     }
 
   SDL_ShowCursor (SDL_DISABLE);
 
-  // Load the fonts
   xo_load_fonts (app);
-
-  // Load the tileset
   xo_load_images (app);
-
-  // Load the music
   xo_load_clips (app);
 
   xo_log_debug (0, SDL_FALSE, "Initialization complete!\n");
@@ -1514,17 +1540,17 @@ main (int argc, char *argv[])
   double x = 0.0;
   double freq = .1;
   double amplitude = 2.5;
-  double phaseOffset = 0.5;
+  double phase_offset = 0.5;
 
-  SDL_Rect mouse_rect = { 0, 0, TILE_SIZE * 3, TILE_SIZE * 3 };
+  SDL_Rect mouse_rect = { 0, 0, XO_TILE_SIZE * 3, XO_TILE_SIZE * 3 };
 
-  app->game->game_state = GAME_STATE_MENU;
+  app->game->game_state = XO_GAME_STATE_MENU;
 
   Mix_VolumeMusic (20);
   Mix_PlayMusic (app->musics[0], -1);
 
   SDL_Event event;
-  while ((app->game->game_state != GAME_STATE_OVER) == SDL_TRUE)
+  while ((app->game->game_state != XO_GAME_STATE_OVER) == SDL_TRUE)
     {
       if (SDL_PollEvent (&event) != 0)
         {
@@ -1542,24 +1568,31 @@ main (int argc, char *argv[])
               xo_log_debug (2, SDL_FALSE, "Mouse clicked at %d, %d.",
                             app->game->mouse.coordinates.x,
                             app->game->mouse.coordinates.y);
-              if (app->game->game_state == GAME_STATE_MENU)
+              if (app->game->game_state == XO_GAME_STATE_MENU)
                 {
-                  app->game->game_state = GAME_STATE_PLAY;
+                  app->game->game_state = XO_GAME_STATE_PLAY;
                 }
               else
                 {
                   /* Tries playing a move for the player, if the move passes,
                    * then the AI can play. */
-                  if (xo_player_move (app, event.button.x, event.button.y)
+                  SDL_Point square = xo_mouse_to_square (app, event.button.x,
+                                                         event.button.y);
+                  if (xo_game_play (app, XO_BIT_MEANING_SIDE_X, square.x,
+                                    square.y)
                       == SDL_TRUE)
                     {
-                      xo_generate_moves_bad (app);
+                      SDL_Point cpu_play
+                          = xo_game_cpu_find_next_play_BAD (app);
+                      xo_game_play (app, XO_BIT_MEANING_SIDE_O, cpu_play.x,
+                                    cpu_play.y);
+                      xo_board_test_if_final_state (app->game->board->data);
                     }
                 }
             }
         }
 
-      double y = xo_sine_wave (x, freq, amplitude, phaseOffset);
+      double y = xo_sine_wave (x, freq, amplitude, phase_offset);
       x += 0.1;
 
       mouse_rect.x = app->game->mouse.coordinates.x;
@@ -1568,17 +1601,17 @@ main (int argc, char *argv[])
       SDL_SetRenderDrawColor (app->renderer, 0, 0, 0, 255);
       SDL_RenderClear (app->renderer);
       SDL_RenderCopy (app->renderer, app->game->board->image, NULL, NULL);
-      if (app->game->game_state == GAME_STATE_MENU)
+      if (app->game->game_state == XO_GAME_STATE_MENU)
         {
           SDL_RenderCopy (app->renderer, app->game->logo, NULL,
                           &(SDL_Rect){ 60, 60 + (int)y, 270, 180 });
         }
-      xo_draw_board (app);
+      xo_board_draw (app);
       SDL_RenderCopy (app->renderer, app->game->mouse.cursor, NULL,
                       &mouse_rect);
       SDL_RenderPresent (app->renderer);
     }
 
-  xo_close_app (0);
+  xo_exit (0);
   return 0;
 }
