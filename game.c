@@ -24,9 +24,6 @@
 #define BOARD_SIZE 3
 #define BORDER 4
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-
 enum win_state_type
 {
   WIN_STATE_LOSE = -1,
@@ -34,22 +31,6 @@ enum win_state_type
   WIN_STATE_WIN = 1,
   WIN_STATE_NONE = 2,
 };
-
-static const char *
-win_state_type_to_string (enum win_state_type type)
-{
-  switch (type)
-    {
-    case WIN_STATE_LOSE:
-      return "Lose";
-    case WIN_STATE_TIE:
-      return "Tie";
-    case WIN_STATE_WIN:
-      return "Win";
-    case WIN_STATE_NONE:
-      return "None";
-    }
-}
 
 enum game_state
 {
@@ -129,191 +110,25 @@ struct app
   struct game *game;
 };
 
-static void *context_alloc (size_t size);
-static int32_t load_fonts (struct app *app);
-static int32_t load_images (struct app *app);
-static int32_t make_board (struct app *app, SDL_Surface *surface[]);
-static int32_t load_clips (struct app *app);
-static SDL_Surface *rotate_surface (SDL_Surface *surface, int increment_count);
-static SDL_Surface *surface_mirror_y (SDL_Surface *surface);
-static SDL_Surface *surface_mirror_x (SDL_Surface *surface);
-static Uint32 get_pixel (SDL_Surface *surface, int x, int y);
-static void put_pixel (SDL_Surface *surface, int x, int y, Uint32 pixelValue);
-static int32_t make_border (SDL_Surface *surfaces[], SDL_Surface *board,
-                            int col, int row);
-static int32_t make_gui (struct app *app, SDL_Surface *surfaces[]);
-static double sine_wave (double x, double freq, double amplitude,
-                         double phaseOffset);
-static void draw_board (struct app *app);
-static void computer_move (struct app *app, int col, int row);
-static void player_move (struct app *app, int col, int row);
-static SDL_bool check_if_bit (struct board_data *board,
-                              enum bit_meaning_type bit, int col, int row);
-static void place (struct board_data *board_data, uint8_t side, int col,
-                   int row);
-static enum win_state_type game_over (struct board_data *board_data);
-static SDL_bool check_board_full (struct board_data *board_data);
-static void generate_moves_bad (struct app *app);
-static struct AI_response minimax (struct board_data *last_board,
-                                   enum bit_meaning_type simulated_side);
-static void generate_moves (struct app *app);
-
+static Arena move_arena = { 0 };
 static Arena default_arena = { 0 };
 static Arena *context_arena = &default_arena;
 
-int
-main (int argc, char *argv[])
-{
-  /* The game begins by initializing SDL2 with various flags */
-  Uint32 init_flags = SDL_INIT_EVERYTHING;
-  Uint32 window_flags = SDL_WINDOW_SHOWN;
-  Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
-  int image_flags = IMG_INIT_PNG;
-  int mixer_flags = MIX_INIT_MP3 | MIX_INIT_OGG;
+/* Debug mode */
 
-  // Memory allocation for app
-  struct app *app = (struct app *)context_alloc (sizeof (struct app));
+#define DEBUG_LOG_NONE 0
+#define DEBUG_LOG_BASE 1
+#define DEBUG_LOG_ALL 2
 
-  if (app == NULL)
-    {
-      printf ("Failed to allocate memory for app\n");
-      return 1;
-    }
+#define DEBUG_LOG DEBUG_LOG_ALL
 
-  app->game = (struct game *)context_alloc (sizeof (struct game));
-
-  if (app->game == NULL)
-    {
-      printf ("Failed to allocate memory for game\n");
-      return 1;
-    }
-  app->game->game_state = GAME_STATE_NULL;
-
-  // SDL2 init
-  if (SDL_Init (init_flags) < 0)
-    {
-      printf ("SDL_Init Error: %s\n", SDL_GetError ());
-    }
-
-  if (TTF_Init () < 0)
-    {
-      printf ("TTF_Init Error: %s\n", TTF_GetError ());
-      return 1;
-    }
-
-  if (IMG_Init (image_flags) != image_flags)
-    {
-      printf ("IMG_Init Error: %s\n", IMG_GetError ());
-      return 1;
-    }
-
-  if (Mix_Init (mixer_flags) != mixer_flags)
-    {
-      printf ("Mix_Init Error: %s\n", Mix_GetError ());
-      return 1;
-    }
-
-  if (Mix_OpenAudio (44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
-    {
-      printf ("Mix_OpenAudio Error: %s\n", Mix_GetError ());
-      return 1;
-    }
-
-  app->window = SDL_CreateWindow ("Tic-Tac-Toe", SDL_WINDOWPOS_CENTERED,
-                                  SDL_WINDOWPOS_CENTERED, WINDOW_SIZE,
-                                  WINDOW_SIZE, window_flags);
-
-  if (app->window == NULL)
-    {
-      printf ("SDL_CreateWindow Error: %s\n", SDL_GetError ());
-      return 1;
-    }
-
-  app->renderer = SDL_CreateRenderer (app->window, -1, renderer_flags);
-
-  if (app->renderer == NULL)
-    {
-      printf ("SDL_CreateRenderer Error: %s\n", SDL_GetError ());
-      return 1;
-    }
-
-  SDL_ShowCursor (SDL_DISABLE);
-
-  // Load the fonts
-  load_fonts (app);
-
-  // Load the tileset
-  load_images (app);
-
-  // Load the music
-  load_clips (app);
-
-  printf ("Initialization complete!\n");
-
-  double x = 0.0;
-  double freq = .1;
-  double amplitude = 2.5;
-  double phaseOffset = 0.5;
-
-  SDL_Rect mouse_rect = { 0, 0, TILE_SIZE * 3, TILE_SIZE * 3 };
-
-  app->game->game_state = GAME_STATE_MENU;
-
-  Mix_VolumeMusic (20);
-  Mix_PlayMusic (app->musics[0], -1);
-
-  SDL_Event event;
-  while ((app->game->game_state != GAME_STATE_OVER) == SDL_TRUE)
-    {
-      if (SDL_PollEvent (&event) != 0)
-        {
-          if (event.type == SDL_QUIT)
-            {
-              break;
-            }
-          if (event.type == SDL_MOUSEMOTION)
-            {
-              app->game->mouse.coordinates.x = event.motion.x;
-              app->game->mouse.coordinates.y = event.motion.y;
-            }
-          if (event.type == SDL_MOUSEBUTTONDOWN)
-            {
-              if (app->game->game_state == GAME_STATE_MENU)
-                {
-                  app->game->game_state = GAME_STATE_PLAY;
-                }
-              else
-                {
-                  player_move (app, event.button.x, event.button.y);
-                  generate_moves (app);
-                }
-            }
-        }
-
-      double y = sine_wave (x, freq, amplitude, phaseOffset);
-      x += 0.1;
-
-      mouse_rect.x = app->game->mouse.coordinates.x;
-      mouse_rect.y = app->game->mouse.coordinates.y;
-
-      SDL_SetRenderDrawColor (app->renderer, 0, 0, 0, 255);
-      SDL_RenderClear (app->renderer);
-      SDL_RenderCopy (app->renderer, app->game->board->image, NULL, NULL);
-      if (app->game->game_state == GAME_STATE_MENU)
-        {
-          SDL_RenderCopy (app->renderer, app->game->logo, NULL,
-                          &(SDL_Rect){ 60, 60 + (int)y, 270, 180 });
-        }
-      draw_board (app);
-      SDL_RenderCopy (app->renderer, app->game->mouse.cursor, NULL,
-                      &mouse_rect);
-      SDL_RenderPresent (app->renderer);
-    }
-
-  arena_free (&default_arena);
-  return 0;
-}
-
+/**
+ * Allocate as part of the current context_arena. Arena can be switched by
+ * simple address assignment, i.e.: context_arena = &temporary_arena; (see
+ * tsoding's page for more info -- https://github.com/tsoding/arena)
+ * @param size Size of the allocation
+ * @return Returns a pointer to the allocated memory chunk
+ */
 static void *
 context_alloc (size_t size)
 {
@@ -321,6 +136,305 @@ context_alloc (size_t size)
   void *mem = arena_alloc (context_arena, size);
   memset (mem, 0, size);
   return mem;
+}
+
+/**
+ * Produces a message in the output console through SDL_LogMessageV()
+ * internally.
+ * @param db_order The message is only produced if the db_order is higher or
+ * equal to the current DEBUG_LOG status value.
+ * @param b_is_warn The message is produced as with warning priority if true
+ * @param format Message format (stdio format)
+ * @param ... Format parameters
+ */
+static void
+debug_log (int32_t db_order, SDL_bool b_is_warn, const char *format, ...)
+{
+  va_list args;
+  va_start (args, format);
+  if (DEBUG_LOG >= db_order)
+    {
+      SDL_LogMessageV (SDL_LOG_CATEGORY_APPLICATION,
+                       b_is_warn ? SDL_LOG_PRIORITY_WARN
+                                 : SDL_LOG_PRIORITY_INFO,
+                       format, args);
+    }
+  va_end (args);
+}
+
+/**
+ * Produces a message in the output console through SDL_LogMessageV()
+ * internally, automatically placed in the error category & with error
+ * priority.
+ * @param b_is_critical The message is produced as with critical priority if
+ * true
+ * @param format Message format (stdio format)
+ * @param ... Format parameters
+ */
+static void
+error_log (SDL_bool b_is_critical, const char *format, ...)
+{
+  va_list args;
+  va_start (args, format);
+  SDL_LogMessageV (SDL_LOG_CATEGORY_ERROR,
+                   b_is_critical ? SDL_LOG_PRIORITY_CRITICAL
+                                 : SDL_LOG_PRIORITY_ERROR,
+                   format, args);
+
+  va_end (args);
+}
+
+/**
+ * Gets a pixel RGBA value from a specified surface.
+ * @param surface
+ * @param x Pixel coordinate on x
+ * @param y Pixel coordinate on y
+ * @return RGBA value of the pixel encoded in a 32 bit integer (8 bits per
+ * channel)
+ */
+static Uint32
+get_pixel (SDL_Surface *surface, int x, int y)
+{
+  Uint8 *pixelData = (Uint8 *)surface->pixels;
+  int index = y * surface->pitch + x * (int)sizeof (Uint32);
+  return *((Uint32 *)(pixelData + index));
+}
+
+/**
+ * Changes a pixel RGBA value in the specified surface.
+ * @param surface
+ * @param x Pixel coordinate on x
+ * @param y Pixel coordinate on y
+ * @param pixelValue
+ */
+static void
+put_pixel (SDL_Surface *surface, int x, int y, Uint32 pixelValue /* RGBA */)
+{
+  Uint8 *pixelData = (Uint8 *)surface->pixels;
+  int index = y * surface->pitch + x * (int)sizeof (Uint32);
+  *((Uint32 *)(pixelData + index)) = pixelValue;
+}
+
+/**
+ * Rotates an SDL_Surface on the CPU by increments on 90-degrees only, pixel by
+ * pixel. This function isn't very fast, so it should only be used at
+ * initialization or on specific single-action triggers and never every frame
+ * or on quick timers.
+ * @param surface Base surface to rotate
+ * @param increment_count Number of 90-degrees rotation to perform (positive
+ * increments+ is clockwise, negative increments- is counter-clockwise)
+ * @return
+ */
+static SDL_Surface *
+rotate_surface (SDL_Surface *surface, int increment_count)
+{
+  // calculate the final width and height after rotation
+  int newWidth = surface->w;
+  int newHeight = surface->h;
+  if (increment_count % 2 != 0)
+    {
+      newWidth = surface->h;
+      newHeight = surface->w;
+    }
+  if (increment_count < 0)
+    {
+      increment_count += 4;
+    }
+
+  // create a new surface with the final dimensions
+  SDL_Surface *newSurface = SDL_CreateRGBSurface (
+      0, newWidth, newHeight, surface->format->BitsPerPixel,
+      surface->format->Rmask, surface->format->Gmask, surface->format->Bmask,
+      surface->format->Amask);
+
+  // copy pixels from original surface to new surface with rotated coordinates
+  for (int x = 0; x < surface->w; x++)
+    {
+      for (int y = 0; y < surface->h; y++)
+        {
+          Uint32 pixel = get_pixel (surface, x, y);
+          int newX, newY;
+          switch (increment_count)
+            {
+            case 0:
+              newX = x;
+              newY = y;
+              break;
+            case 1:
+              newX = surface->h - y - 1;
+              newY = x;
+              break;
+            case 2:
+              newX = surface->w - x - 1;
+              newY = surface->h - y - 1;
+              break;
+            case 3:
+              newX = y;
+              newY = surface->w - x - 1;
+              break;
+            default:
+              printf ("There was an error while rotating the surface. \n");
+              break;
+            }
+          put_pixel (newSurface, newX, newY, pixel);
+        }
+    }
+
+  return newSurface;
+}
+
+static SDL_Surface *
+surface_mirror_x (SDL_Surface *surface)
+{
+  // Get the dimensions of the surface
+  int width = surface->w;
+  int height = surface->h;
+
+  // Create a new surface with the same dimensions and format as the original
+  SDL_Surface *mirrored_surface = SDL_CreateRGBSurface (
+      0, width, height, surface->format->BitsPerPixel, surface->format->Rmask,
+      surface->format->Gmask, surface->format->Bmask, surface->format->Amask);
+
+  // Iterate through each row of pixels in the original surface
+  for (int y = 0; y < height; y++)
+    {
+      // Iterate through each pixel in the row, from right to left
+      for (int x = width - 1; x >= 0; x--)
+        {
+          // Copy the color of the pixel to the corresponding position in the
+          // mirrored surface
+          Uint32 pixel = ((Uint32 *)surface->pixels)[y * width + x];
+          ((Uint32 *)mirrored_surface->pixels)[y * width + (width - 1 - x)]
+              = pixel;
+        }
+    }
+
+  return mirrored_surface;
+}
+
+static double
+sine_wave (double x, double freq, double amplitude, double phaseOffset)
+{
+  double y = amplitude * sin (2 * M_PI * freq * x + phaseOffset)
+             - (amplitude / 2.0);
+  return y;
+}
+
+static SDL_Surface *
+surface_mirror_y (SDL_Surface *surface)
+{
+  // Get the dimensions of the surface
+  int width = surface->w;
+  int height = surface->h;
+
+  // Create a new surface with the same dimensions and format as the original
+  SDL_Surface *mirrored_surface = SDL_CreateRGBSurface (
+      0, width, height, surface->format->BitsPerPixel, surface->format->Rmask,
+      surface->format->Gmask, surface->format->Bmask, surface->format->Amask);
+
+  // Iterate through each column of pixels in the original surface
+  for (int x = 0; x < width; x++)
+    {
+      // Iterate through each pixel in the column, from bottom to top
+      for (int y = height - 1; y >= 0; y--)
+        {
+          // Copy the color of the pixel to the corresponding position in the
+          // mirrored surface
+          Uint32 pixel = ((Uint32 *)surface->pixels)[y * width + x];
+          ((Uint32 *)mirrored_surface->pixels)[(height - 1 - y) * width + x]
+              = pixel;
+        }
+    }
+
+  return mirrored_surface;
+}
+
+static const char *
+win_state_type_to_string (enum win_state_type type)
+{
+  switch (type)
+    {
+    case WIN_STATE_LOSE:
+      return "Lose";
+    case WIN_STATE_TIE:
+      return "Tie";
+    case WIN_STATE_WIN:
+      return "Win";
+    case WIN_STATE_NONE:
+      return "None";
+    }
+}
+
+static int32_t
+load_clips (struct app *app)
+{
+  int32_t result = 0;
+  // Directory access
+  DIR *cur_dir = NULL;
+  struct dirent *entry = NULL;
+  char file_path[256];
+  // Start by opening the music directory
+  cur_dir = opendir (CLIP_PATH);
+  if (!cur_dir)
+    {
+      printf ("Error: could not open directory\n");
+      return 1;
+    }
+
+  // Loop once through the directory to count the files
+  while ((entry = readdir (cur_dir)) != NULL)
+    {
+      sprintf (file_path, "%s/%s", CLIP_PATH, entry->d_name);
+
+      struct stat st;
+      stat (file_path, &st);
+
+      if (S_ISREG (st.st_mode) && strstr (entry->d_name, ".mp3") != NULL)
+        {
+
+          printf ("Processing %s\n", file_path);
+
+          // Increment the music counter
+          app->music_max++;
+        }
+    }
+  closedir (cur_dir);
+
+  // Allocate memory for the music pointers
+  // based on the number of files found
+  app->musics = (Mix_Music **)context_alloc ((size_t)app->music_max
+                                             * sizeof (Mix_Music *));
+
+  // Loop through the directory again to load the music
+  cur_dir = opendir (CLIP_PATH);
+  int m = 0; // current file index
+  while ((entry = readdir (cur_dir)) != NULL)
+    {
+      sprintf (file_path, "%s/%s", CLIP_PATH, entry->d_name);
+
+      struct stat st;
+      stat (file_path, &st);
+
+      if (S_ISREG (st.st_mode)
+          && (strstr (strlwr (entry->d_name), ".mp3") != NULL))
+        {
+          // Load the music file
+          app->musics[m] = Mix_LoadMUS (file_path);
+          if (app->musics[m] == NULL)
+            {
+              printf ("Mix_LoadMUS Error: %s\n", Mix_GetError ());
+              return 1;
+            }
+          else
+            {
+              printf ("Music titled '%s' loaded successfully!\n", file_path);
+              m++;
+            }
+        }
+    }
+
+  closedir (cur_dir);
+  return result;
 }
 
 static int32_t
@@ -420,131 +534,6 @@ cleanup_images (SDL_Point surface_dim, SDL_Surface **surface_pieces)
           SDL_FreeSurface (surface_pieces[row * surface_dim.x + col]);
         }
     }
-}
-
-static int32_t
-load_images (struct app *app)
-{
-
-  printf ("Loading images...\n");
-
-  SDL_Surface *tileset = IMG_Load (GFX_PATH);
-
-  if (tileset == NULL)
-    {
-      printf ("Error while loading tileset image: %s\n", IMG_GetError ());
-      return 1;
-    }
-
-  // Calculate the tileset's dimensions
-  int tileset_w, tileset_h;
-  SDL_QueryTexture (SDL_CreateTextureFromSurface (app->renderer, tileset),
-                    NULL, NULL, &tileset_w, &tileset_h);
-  int cols = tileset_w / TILE_SIZE;
-  int rows = tileset_h / TILE_SIZE;
-
-  printf ("Tileset loaded. Dimensions: %d x %d\n", tileset_w, tileset_h);
-
-  app->image_max = cols * rows;
-  SDL_Surface **surface_pieces = (SDL_Surface **)context_alloc (
-      (size_t)app->image_max * sizeof (SDL_Surface *));
-  if (surface_pieces == NULL)
-    {
-      printf ("Error while allocating memory for the surface pieces: %s\n",
-              SDL_GetError ());
-      cleanup_images ((SDL_Point){ cols, rows }, surface_pieces);
-      return 1;
-    }
-
-  for (int row = 0; row < rows; row++)
-    {
-      for (int col = 0; col < cols; col++)
-        {
-          int current_id = col + (row * cols);
-          printf ("Blitting extracted of surface to surface piece %d!\n",
-                  current_id);
-
-          SDL_Rect extract_rect = (SDL_Rect){ .w = TILE_SIZE,
-                                              .h = TILE_SIZE,
-                                              .x = col * TILE_SIZE,
-                                              .y = row * TILE_SIZE };
-          // Allocate and initialize the surface
-          surface_pieces[current_id] = SDL_CreateRGBSurfaceWithFormat (
-              0, TILE_SIZE, TILE_SIZE, 32, SDL_PIXELFORMAT_RGBA32);
-          SDL_BlitSurface (tileset, &extract_rect, surface_pieces[current_id],
-                           NULL);
-        }
-    }
-
-  make_board (app, surface_pieces);
-
-  make_gui (app, surface_pieces);
-
-  cleanup_images ((SDL_Point){ cols, rows }, surface_pieces);
-  return 0;
-}
-
-static int32_t
-make_board (struct app *app, SDL_Surface *surfaces[])
-{
-  printf ("Making board...\n");
-
-  // Alloc memory for the board struct within game
-
-  app->game->board = (struct board *)context_alloc (sizeof (struct board));
-
-  SDL_Surface *board = SDL_CreateRGBSurfaceWithFormat (
-      0, (TILE_SIZE * BOARD_SIZE) + BORDER, (TILE_SIZE * BOARD_SIZE) + BORDER,
-      32, SDL_PIXELFORMAT_RGBA32);
-
-  if (board == NULL)
-    {
-      printf ("Error while creating board surface: %s\n", SDL_GetError ());
-      SDL_FreeSurface (board);
-      return 1;
-    }
-
-  app->game->board->data
-      = (struct board_data *)context_alloc (sizeof (struct board_data));
-  if (app->game->board->data == NULL)
-    {
-      return 1;
-    }
-
-  memset (app->game->board->data->tiles, 0x1, sizeof (uint8_t) * 9);
-
-  for (int col = 0; col < 3; col++)
-    {
-      for (int row = 0; row < 3; row++)
-        {
-          SDL_Rect dest = (SDL_Rect){ .w = TILE_SIZE,
-                                      .h = TILE_SIZE,
-                                      .x = (col * TILE_SIZE) + BORDER / 2,
-                                      .y = (row * TILE_SIZE) + BORDER / 2 };
-
-          // Place background tile regardless
-          SDL_BlitSurface (surfaces[0], NULL, board, &dest);
-        }
-    }
-  for (int col = 0; col < 3; col++)
-    {
-      for (int row = 0; row < 3; row++)
-        {
-          make_border (surfaces, board, col, row);
-        }
-    }
-
-  app->game->board->image
-      = SDL_CreateTextureFromSurface (app->renderer, board);
-
-  if (app->game->board == NULL)
-    {
-      printf ("Error while creating board texture: %s\n", SDL_GetError ());
-      SDL_FreeSurface (board);
-      return 1;
-    }
-
-  return 0;
 }
 
 static int32_t
@@ -780,6 +769,69 @@ make_border (SDL_Surface *surfaces[], SDL_Surface *board, int col, int row)
 }
 
 static int32_t
+make_board (struct app *app, SDL_Surface *surfaces[])
+{
+  printf ("Making board...\n");
+
+  // Alloc memory for the board struct within game
+
+  app->game->board = (struct board *)context_alloc (sizeof (struct board));
+
+  SDL_Surface *board = SDL_CreateRGBSurfaceWithFormat (
+      0, (TILE_SIZE * BOARD_SIZE) + BORDER, (TILE_SIZE * BOARD_SIZE) + BORDER,
+      32, SDL_PIXELFORMAT_RGBA32);
+
+  if (board == NULL)
+    {
+      printf ("Error while creating board surface: %s\n", SDL_GetError ());
+      SDL_FreeSurface (board);
+      return 1;
+    }
+
+  app->game->board->data
+      = (struct board_data *)context_alloc (sizeof (struct board_data));
+  if (app->game->board->data == NULL)
+    {
+      return 1;
+    }
+
+  memset (app->game->board->data->tiles, 0x1, sizeof (uint8_t) * 9);
+
+  for (int col = 0; col < 3; col++)
+    {
+      for (int row = 0; row < 3; row++)
+        {
+          SDL_Rect dest = (SDL_Rect){ .w = TILE_SIZE,
+                                      .h = TILE_SIZE,
+                                      .x = (col * TILE_SIZE) + BORDER / 2,
+                                      .y = (row * TILE_SIZE) + BORDER / 2 };
+
+          // Place background tile regardless
+          SDL_BlitSurface (surfaces[0], NULL, board, &dest);
+        }
+    }
+  for (int col = 0; col < 3; col++)
+    {
+      for (int row = 0; row < 3; row++)
+        {
+          make_border (surfaces, board, col, row);
+        }
+    }
+
+  app->game->board->image
+      = SDL_CreateTextureFromSurface (app->renderer, board);
+
+  if (app->game->board == NULL)
+    {
+      printf ("Error while creating board texture: %s\n", SDL_GetError ());
+      SDL_FreeSurface (board);
+      return 1;
+    }
+
+  return 0;
+}
+
+static int32_t
 make_gui (struct app *app, SDL_Surface *surfaces[])
 {
   SDL_Surface *logo = SDL_CreateRGBSurfaceWithFormat (
@@ -831,320 +883,6 @@ make_gui (struct app *app, SDL_Surface *surfaces[])
   return 0;
 }
 
-static int32_t
-load_clips (struct app *app)
-{
-  int32_t result = 0;
-  // Directory access
-  DIR *cur_dir = NULL;
-  struct dirent *entry = NULL;
-  char file_path[256];
-  // Start by opening the music directory
-  cur_dir = opendir (CLIP_PATH);
-  if (!cur_dir)
-    {
-      printf ("Error: could not open directory\n");
-      return 1;
-    }
-
-  // Loop once through the directory to count the files
-  while ((entry = readdir (cur_dir)) != NULL)
-    {
-      sprintf (file_path, "%s/%s", CLIP_PATH, entry->d_name);
-
-      struct stat st;
-      stat (file_path, &st);
-
-      if (S_ISREG (st.st_mode) && strstr (entry->d_name, ".mp3") != NULL)
-        {
-
-          printf ("Processing %s\n", file_path);
-
-          // Increment the music counter
-          app->music_max++;
-        }
-    }
-  closedir (cur_dir);
-
-  // Allocate memory for the music pointers
-  // based on the number of files found
-  app->musics = (Mix_Music **)context_alloc ((size_t)app->music_max
-                                             * sizeof (Mix_Music *));
-
-  // Loop through the directory again to load the music
-  cur_dir = opendir (CLIP_PATH);
-  int m = 0; // current file index
-  while ((entry = readdir (cur_dir)) != NULL)
-    {
-      sprintf (file_path, "%s/%s", CLIP_PATH, entry->d_name);
-
-      struct stat st;
-      stat (file_path, &st);
-
-      if (S_ISREG (st.st_mode)
-          && (strstr (strlwr (entry->d_name), ".mp3") != NULL))
-        {
-          // Load the music file
-          app->musics[m] = Mix_LoadMUS (file_path);
-          if (app->musics[m] == NULL)
-            {
-              printf ("Mix_LoadMUS Error: %s\n", Mix_GetError ());
-              return 1;
-            }
-          else
-            {
-              printf ("Music titled '%s' loaded successfully!\n", file_path);
-              m++;
-            }
-        }
-    }
-
-  closedir (cur_dir);
-  return result;
-}
-
-static SDL_Surface *
-rotate_surface (SDL_Surface *surface, int increment_count)
-{
-  // calculate the final width and height after rotation
-  int newWidth = surface->w;
-  int newHeight = surface->h;
-  if (increment_count % 2 != 0)
-    {
-      newWidth = surface->h;
-      newHeight = surface->w;
-    }
-  if (increment_count < 0)
-    {
-      increment_count += 4;
-    }
-
-  // create a new surface with the final dimensions
-  SDL_Surface *newSurface = SDL_CreateRGBSurface (
-      0, newWidth, newHeight, surface->format->BitsPerPixel,
-      surface->format->Rmask, surface->format->Gmask, surface->format->Bmask,
-      surface->format->Amask);
-
-  // copy pixels from original surface to new surface with rotated coordinates
-  for (int x = 0; x < surface->w; x++)
-    {
-      for (int y = 0; y < surface->h; y++)
-        {
-          Uint32 pixel = get_pixel (surface, x, y);
-          int newX, newY;
-          switch (increment_count)
-            {
-            case 0:
-              newX = x;
-              newY = y;
-              break;
-            case 1:
-              newX = surface->h - y - 1;
-              newY = x;
-              break;
-            case 2:
-              newX = surface->w - x - 1;
-              newY = surface->h - y - 1;
-              break;
-            case 3:
-              newX = y;
-              newY = surface->w - x - 1;
-              break;
-            default:
-              printf ("There was an error while rotating the surface. \n");
-              break;
-            }
-          put_pixel (newSurface, newX, newY, pixel);
-        }
-    }
-
-  return newSurface;
-}
-
-static Uint32
-get_pixel (SDL_Surface *surface, int x, int y)
-{
-  Uint8 *pixelData = (Uint8 *)surface->pixels;
-  int index = y * surface->pitch + x * (int)sizeof (Uint32);
-  return *((Uint32 *)(pixelData + index));
-}
-
-static void
-put_pixel (SDL_Surface *surface, int x, int y, Uint32 pixelValue)
-{
-  Uint8 *pixelData = (Uint8 *)surface->pixels;
-  int index = y * surface->pitch + x * (int)sizeof (Uint32);
-  *((Uint32 *)(pixelData + index)) = pixelValue;
-}
-
-static SDL_Surface *
-surface_mirror_x (SDL_Surface *surface)
-{
-  // Get the dimensions of the surface
-  int width = surface->w;
-  int height = surface->h;
-
-  // Create a new surface with the same dimensions and format as the original
-  SDL_Surface *mirrored_surface = SDL_CreateRGBSurface (
-      0, width, height, surface->format->BitsPerPixel, surface->format->Rmask,
-      surface->format->Gmask, surface->format->Bmask, surface->format->Amask);
-
-  // Iterate through each row of pixels in the original surface
-  for (int y = 0; y < height; y++)
-    {
-      // Iterate through each pixel in the row, from right to left
-      for (int x = width - 1; x >= 0; x--)
-        {
-          // Copy the color of the pixel to the corresponding position in the
-          // mirrored surface
-          Uint32 pixel = ((Uint32 *)surface->pixels)[y * width + x];
-          ((Uint32 *)mirrored_surface->pixels)[y * width + (width - 1 - x)]
-              = pixel;
-        }
-    }
-
-  return mirrored_surface;
-}
-
-static SDL_Surface *
-surface_mirror_y (SDL_Surface *surface)
-{
-  // Get the dimensions of the surface
-  int width = surface->w;
-  int height = surface->h;
-
-  // Create a new surface with the same dimensions and format as the original
-  SDL_Surface *mirrored_surface = SDL_CreateRGBSurface (
-      0, width, height, surface->format->BitsPerPixel, surface->format->Rmask,
-      surface->format->Gmask, surface->format->Bmask, surface->format->Amask);
-
-  // Iterate through each column of pixels in the original surface
-  for (int x = 0; x < width; x++)
-    {
-      // Iterate through each pixel in the column, from bottom to top
-      for (int y = height - 1; y >= 0; y--)
-        {
-          // Copy the color of the pixel to the corresponding position in the
-          // mirrored surface
-          Uint32 pixel = ((Uint32 *)surface->pixels)[y * width + x];
-          ((Uint32 *)mirrored_surface->pixels)[(height - 1 - y) * width + x]
-              = pixel;
-        }
-    }
-
-  return mirrored_surface;
-}
-
-static double
-sine_wave (double x, double freq, double amplitude, double phaseOffset)
-{
-  double y = amplitude * sin (2 * M_PI * freq * x + phaseOffset)
-             - (amplitude / 2.0);
-  return y;
-}
-
-static void
-player_move (struct app *app, int col, int row)
-{
-
-  int tile_x = -1;
-  int tile_y = -1;
-
-  if (col < WINDOW_SIZE / 3)
-    {
-      // Player clicked in the left third of the window
-      tile_x = 0;
-    }
-  else if (col < WINDOW_SIZE * 2 / 3)
-    {
-      // Player clicked in the middle third of the window
-      tile_x = 1;
-    }
-  else
-    {
-      // Player clicked in the right third of the window
-      tile_x = 2;
-    }
-
-  if (row < WINDOW_SIZE / 3)
-    {
-      // Player clicked in the top third of the window
-      tile_y = 0;
-    }
-  else if (row < WINDOW_SIZE * 2 / 3)
-    {
-      // Player clicked in the middle third of the window
-      tile_y = 1;
-    }
-  else
-    {
-      // Player clicked in the bottom third of the window
-      tile_y = 2;
-    }
-  if (check_if_bit (app->game->board->data, EMPTY, tile_x, tile_y))
-    {
-      place (app->game->board->data, 0, tile_x, tile_y);
-    }
-}
-
-static void
-computer_move (struct app *app, int col, int row)
-{
-  if (check_if_bit (app->game->board->data, EMPTY, col, row))
-    {
-      place (app->game->board->data, 1, col, row);
-    }
-}
-
-static void
-draw_board (struct app *app)
-{
-
-  for (int col = 0; col < 3; col++)
-    {
-      for (int row = 0; row < 3; row++)
-        {
-
-          SDL_Rect dest = (SDL_Rect){ .w = TILE_SIZE * 4,
-                                      .h = TILE_SIZE * 4,
-                                      .x = (col * TILE_SIZE * 4) - BORDER / 2,
-                                      .y = (row * TILE_SIZE * 4) - BORDER };
-
-          // Draw the board square at (x, y)
-          if ((app->game->board->data->tiles[col][row] & EMPTY) == EMPTY)
-            {
-            }
-          else
-            {
-              if ((app->game->board->data->tiles[col][row] & X) == X)
-                {
-                  SDL_RenderCopy (app->renderer, app->game->Xs, NULL, &dest);
-                }
-              else if ((app->game->board->data->tiles[col][row] & O) == O)
-                {
-                  SDL_RenderCopy (app->renderer, app->game->Os, NULL, &dest);
-                }
-            }
-        }
-    }
-}
-
-static SDL_bool
-check_if_bit (struct board_data *board, enum bit_meaning_type bit, int col,
-              int row)
-{
-  if ((board->tiles[col][row] & bit) == bit)
-    {
-      /* The square is not empty */
-      return SDL_TRUE;
-    }
-  else
-    {
-      /* The square is empty */
-      return SDL_FALSE;
-    }
-}
-
 /**
  * This function places the current player's symbol in the selected square. In
  * a board_data (either the real board or a predicted future).
@@ -1166,29 +904,20 @@ place (struct board_data *board_data, uint8_t side, int col, int row)
   board_data->tiles[col][row] |= (X << side);
 }
 
-static void
-generate_moves_bad (struct app *app)
+static SDL_bool
+check_if_bit (struct board_data *board, enum bit_meaning_type bit, int col,
+              int row)
 {
-  SDL_bool finished = SDL_FALSE;
-  for (int row = 0; row < 3; row++)
+  if ((board->tiles[col][row] & bit) == bit)
     {
-      if (finished == SDL_TRUE)
-        {
-          break;
-        }
-      for (int col = 0; col < 3; col++)
-        {
-          if (check_if_bit (app->game->board->data, EMPTY, col, row)
-              == SDL_TRUE)
-            {
-              computer_move (app, col, row);
-              finished = SDL_TRUE;
-              break;
-            }
-        }
+      /* The square is not empty */
+      return SDL_TRUE;
     }
-
-  game_over (app->game->board->data);
+  else
+    {
+      /* The square is empty */
+      return SDL_FALSE;
+    }
 }
 
 static SDL_bool
@@ -1313,7 +1042,132 @@ game_over (struct board_data *board_data)
   return WIN_STATE_NONE;
 }
 
-static Arena move_arena = { 0 };
+/**
+ * Plays the move for the player.
+ * @param app
+ * @param col
+ * @param row
+ * @return Whether the player move was successful. The move can fail if the
+ * tile clicked already contains something.
+ */
+static SDL_bool
+player_move (struct app *app, int col, int row)
+{
+
+  int tile_x = -1;
+  int tile_y = -1;
+
+  if (col < WINDOW_SIZE / 3)
+    {
+      // Player clicked in the left third of the window
+      tile_x = 0;
+    }
+  else if (col < WINDOW_SIZE * 2 / 3)
+    {
+      // Player clicked in the middle third of the window
+      tile_x = 1;
+    }
+  else
+    {
+      // Player clicked in the right third of the window
+      tile_x = 2;
+    }
+
+  if (row < WINDOW_SIZE / 3)
+    {
+      // Player clicked in the top third of the window
+      tile_y = 0;
+    }
+  else if (row < WINDOW_SIZE * 2 / 3)
+    {
+      // Player clicked in the middle third of the window
+      tile_y = 1;
+    }
+  else
+    {
+      // Player clicked in the bottom third of the window
+      tile_y = 2;
+    }
+  debug_log (1, SDL_FALSE, "Tile clicked: %d, %d.", tile_x, tile_y);
+  if (check_if_bit (app->game->board->data, EMPTY, tile_x, tile_y))
+    {
+      debug_log (1, SDL_FALSE, "It was empty! Placing X");
+      place (app->game->board->data, 0, tile_x, tile_y);
+      return SDL_TRUE;
+    }
+  else
+    {
+      debug_log (1, SDL_FALSE, "Tile is occupied. Click ignored...");
+    }
+  return SDL_FALSE;
+}
+
+static void
+computer_move (struct app *app, int col, int row)
+{
+  if (check_if_bit (app->game->board->data, EMPTY, col, row))
+    {
+      place (app->game->board->data, 1, col, row);
+    }
+}
+
+static void
+draw_board (struct app *app)
+{
+
+  for (int col = 0; col < 3; col++)
+    {
+      for (int row = 0; row < 3; row++)
+        {
+
+          SDL_Rect dest = (SDL_Rect){ .w = TILE_SIZE * 4,
+                                      .h = TILE_SIZE * 4,
+                                      .x = (col * TILE_SIZE * 4) - BORDER / 2,
+                                      .y = (row * TILE_SIZE * 4) - BORDER };
+
+          // Draw the board square at (x, y)
+          if ((app->game->board->data->tiles[col][row] & EMPTY) == EMPTY)
+            {
+            }
+          else
+            {
+              if ((app->game->board->data->tiles[col][row] & X) == X)
+                {
+                  SDL_RenderCopy (app->renderer, app->game->Xs, NULL, &dest);
+                }
+              else if ((app->game->board->data->tiles[col][row] & O) == O)
+                {
+                  SDL_RenderCopy (app->renderer, app->game->Os, NULL, &dest);
+                }
+            }
+        }
+    }
+}
+
+static void
+generate_moves_bad (struct app *app)
+{
+  SDL_bool finished = SDL_FALSE;
+  for (int row = 0; row < 3; row++)
+    {
+      if (finished == SDL_TRUE)
+        {
+          break;
+        }
+      for (int col = 0; col < 3; col++)
+        {
+          if (check_if_bit (app->game->board->data, EMPTY, col, row)
+              == SDL_TRUE)
+            {
+              computer_move (app, col, row);
+              finished = SDL_TRUE;
+              break;
+            }
+        }
+    }
+
+  game_over (app->game->board->data);
+}
 
 static struct AI_response
 minimax (struct board_data *last_board, enum bit_meaning_type simulated_side)
@@ -1411,4 +1265,227 @@ generate_moves (struct app *app)
 
   context_arena = &default_arena;
   arena_free (&move_arena);
+}
+
+static int32_t
+load_images (struct app *app)
+{
+
+  printf ("Loading images...\n");
+
+  SDL_Surface *tileset = IMG_Load (GFX_PATH);
+
+  if (tileset == NULL)
+    {
+      printf ("Error while loading tileset image: %s\n", IMG_GetError ());
+      return 1;
+    }
+
+  // Calculate the tileset's dimensions
+  int tileset_w, tileset_h;
+  SDL_QueryTexture (SDL_CreateTextureFromSurface (app->renderer, tileset),
+                    NULL, NULL, &tileset_w, &tileset_h);
+  int cols = tileset_w / TILE_SIZE;
+  int rows = tileset_h / TILE_SIZE;
+
+  printf ("Tileset loaded. Dimensions: %d x %d\n", tileset_w, tileset_h);
+
+  app->image_max = cols * rows;
+  SDL_Surface **surface_pieces = (SDL_Surface **)context_alloc (
+      (size_t)app->image_max * sizeof (SDL_Surface *));
+  if (surface_pieces == NULL)
+    {
+      printf ("Error while allocating memory for the surface pieces: %s\n",
+              SDL_GetError ());
+      cleanup_images ((SDL_Point){ cols, rows }, surface_pieces);
+      return 1;
+    }
+
+  for (int row = 0; row < rows; row++)
+    {
+      for (int col = 0; col < cols; col++)
+        {
+          int current_id = col + (row * cols);
+          printf ("Blitting extracted of surface to surface piece %d!\n",
+                  current_id);
+
+          SDL_Rect extract_rect = (SDL_Rect){ .w = TILE_SIZE,
+                                              .h = TILE_SIZE,
+                                              .x = col * TILE_SIZE,
+                                              .y = row * TILE_SIZE };
+          // Allocate and initialize the surface
+          surface_pieces[current_id] = SDL_CreateRGBSurfaceWithFormat (
+              0, TILE_SIZE, TILE_SIZE, 32, SDL_PIXELFORMAT_RGBA32);
+          SDL_BlitSurface (tileset, &extract_rect, surface_pieces[current_id],
+                           NULL);
+        }
+    }
+
+  make_board (app, surface_pieces);
+
+  make_gui (app, surface_pieces);
+
+  cleanup_images ((SDL_Point){ cols, rows }, surface_pieces);
+  return 0;
+}
+
+int
+main (int argc, char *argv[])
+{
+  /* The game begins by initializing SDL2 with various flags */
+  Uint32 init_flags = SDL_INIT_EVERYTHING;
+  Uint32 window_flags = SDL_WINDOW_SHOWN;
+  Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
+  int image_flags = IMG_INIT_PNG;
+  int mixer_flags = MIX_INIT_MP3 | MIX_INIT_OGG;
+
+  // Memory allocation for app
+  struct app *app = (struct app *)context_alloc (sizeof (struct app));
+
+  if (app == NULL)
+    {
+      error_log (SDL_TRUE, "Failed to allocate memory for app\n");
+      return 1;
+    }
+
+  app->game = (struct game *)context_alloc (sizeof (struct game));
+
+  if (app->game == NULL)
+    {
+      error_log (SDL_TRUE, "Failed to allocate memory for game\n");
+      return 1;
+    }
+  app->game->game_state = GAME_STATE_NULL;
+
+  // SDL2 init
+  if (SDL_Init (init_flags) < 0)
+    {
+      error_log (SDL_TRUE, "SDL_Init Error: %s\n", SDL_GetError ());
+    }
+
+  if (TTF_Init () < 0)
+    {
+      error_log (SDL_TRUE, "TTF_Init Error: %s\n", TTF_GetError ());
+      return 1;
+    }
+
+  if (IMG_Init (image_flags) != image_flags)
+    {
+      error_log (SDL_TRUE, "IMG_Init Error: %s\n", IMG_GetError ());
+      return 1;
+    }
+
+  if (Mix_Init (mixer_flags) != mixer_flags)
+    {
+      error_log (SDL_TRUE, "Mix_Init Error: %s\n", Mix_GetError ());
+      return 1;
+    }
+
+  if (Mix_OpenAudio (44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
+    {
+      error_log (SDL_TRUE, "Mix_OpenAudio Error: %s\n", Mix_GetError ());
+      return 1;
+    }
+
+  app->window = SDL_CreateWindow ("Tic-Tac-Toe", SDL_WINDOWPOS_CENTERED,
+                                  SDL_WINDOWPOS_CENTERED, WINDOW_SIZE,
+                                  WINDOW_SIZE, window_flags);
+
+  if (app->window == NULL)
+    {
+      error_log (SDL_TRUE, "SDL_CreateWindow Error: %s\n", SDL_GetError ());
+      return 1;
+    }
+
+  app->renderer = SDL_CreateRenderer (app->window, -1, renderer_flags);
+
+  if (app->renderer == NULL)
+    {
+      error_log (SDL_TRUE, "SDL_CreateRenderer Error: %s\n", SDL_GetError ());
+      return 1;
+    }
+
+  SDL_ShowCursor (SDL_DISABLE);
+
+  // Load the fonts
+  load_fonts (app);
+
+  // Load the tileset
+  load_images (app);
+
+  // Load the music
+  load_clips (app);
+
+  debug_log (0, SDL_FALSE, "Initialization complete!\n");
+
+  double x = 0.0;
+  double freq = .1;
+  double amplitude = 2.5;
+  double phaseOffset = 0.5;
+
+  SDL_Rect mouse_rect = { 0, 0, TILE_SIZE * 3, TILE_SIZE * 3 };
+
+  app->game->game_state = GAME_STATE_MENU;
+
+  Mix_VolumeMusic (20);
+  Mix_PlayMusic (app->musics[0], -1);
+
+  SDL_Event event;
+  while ((app->game->game_state != GAME_STATE_OVER) == SDL_TRUE)
+    {
+      if (SDL_PollEvent (&event) != 0)
+        {
+          if (event.type == SDL_QUIT)
+            {
+              break;
+            }
+          if (event.type == SDL_MOUSEMOTION)
+            {
+              app->game->mouse.coordinates.x = event.motion.x;
+              app->game->mouse.coordinates.y = event.motion.y;
+            }
+          if (event.type == SDL_MOUSEBUTTONDOWN)
+            {
+              debug_log (2, SDL_FALSE, "Mouse clicked at %d, %d.",
+                         app->game->mouse.coordinates.x,
+                         app->game->mouse.coordinates.y);
+              if (app->game->game_state == GAME_STATE_MENU)
+                {
+                  app->game->game_state = GAME_STATE_PLAY;
+                }
+              else
+                {
+                  /* Tries playing a move for the player, if the move passes,
+                   * then the AI can play. */
+                  if (player_move (app, event.button.x, event.button.y)
+                      == SDL_TRUE)
+                    {
+                      generate_moves_bad (app);
+                    }
+                }
+            }
+        }
+
+      double y = sine_wave (x, freq, amplitude, phaseOffset);
+      x += 0.1;
+
+      mouse_rect.x = app->game->mouse.coordinates.x;
+      mouse_rect.y = app->game->mouse.coordinates.y;
+
+      SDL_SetRenderDrawColor (app->renderer, 0, 0, 0, 255);
+      SDL_RenderClear (app->renderer);
+      SDL_RenderCopy (app->renderer, app->game->board->image, NULL, NULL);
+      if (app->game->game_state == GAME_STATE_MENU)
+        {
+          SDL_RenderCopy (app->renderer, app->game->logo, NULL,
+                          &(SDL_Rect){ 60, 60 + (int)y, 270, 180 });
+        }
+      draw_board (app);
+      SDL_RenderCopy (app->renderer, app->game->mouse.cursor, NULL,
+                      &mouse_rect);
+      SDL_RenderPresent (app->renderer);
+    }
+
+  arena_free (&default_arena);
+  return 0;
 }
