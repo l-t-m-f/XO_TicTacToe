@@ -79,14 +79,14 @@ struct cpu_response
 
 enum bit_meaning_type
 {
-  EMPTY = 0x01, /* 0b00000001 */
-  X = 0x02,     /* 0b00000010 */
-  O = 0x04,     /* 0b00000100 */
-  HOVER = 0x08, /* 0b00001000 */
-  CLICK = 0x10, /* 0b00010000 */
-  WIN = 0x20,   /* 0b00100000 */
-  LOSE = 0x40,  /* 0b01000000 */
-  DRAW = 0x80   /* 0b10000000 */
+  EMPTY = 1 << 0, /* 0b00000001 */
+  X = 1 << 1,     /* 0b00000010 */
+  O = 1 << 2,     /* 0b00000100 */
+  HOVER = 1 << 3, /* 0b00001000 */
+  CLICK = 1 << 4, /* 0b00010000 */
+  WIN = 1 << 5,   /* 0b00100000 */
+  LOSE = 1 << 6,  /* 0b01000000 */
+  DRAW = 1 << 7   /* 0b10000000 */
 };
 
 struct game
@@ -1024,37 +1024,35 @@ xo_load_images (struct app *app)
  * This function places the current player's symbol in the selected square. In
  * a board_data (either the real board or a predicted future).
  * @param board_data Board affected by the function
- * @param side Side to xo_place on the board
+ * @param bit Side to xo_board_bit_set_at on the board
  * @param col X coordinate for the square
  * @param row Y coordinate for the square
  */
 static void
-xo_place (struct board_data *board_data, uint8_t side, int col, int row)
+xo_board_bit_set_at (struct board_data *board_data, enum bit_meaning_type bit,
+                     int col, int row)
 {
-  // Check to see if the space is empty
-  if ((board_data->tiles[col][row] & EMPTY) == EMPTY)
-    {
-      // If it is empty, mark it as not empty
-      board_data->tiles[col][row] &= ~EMPTY;
-    }
-  // Mark the space with the current player's piece
-  board_data->tiles[col][row] |= (X << side);
+  board_data->tiles[col][row] |= bit;
+}
+
+static void
+xo_board_bit_clear_at (struct board_data *board_data,
+                       enum bit_meaning_type bit, int col, int row)
+{
+  board_data->tiles[col][row] &= ~bit;
 }
 
 static SDL_bool
-xo_check_if_bit (struct board_data *board, enum bit_meaning_type bit, int col,
-                 int row)
+xo_board_bit_check_at (struct board_data *board, enum bit_meaning_type bit,
+                       int col, int row)
 {
-  if ((board->tiles[col][row] & bit) == bit)
-    {
-      /* The square is not empty */
-      return SDL_TRUE;
-    }
-  else
-    {
-      /* The square is empty */
-      return SDL_FALSE;
-    }
+  return (board->tiles[col][row] & bit) != 0;
+}
+
+static void
+xo_board_bit_clear (struct board_data *board, int col, int row)
+{
+  board->tiles[col][row] = EMPTY;
 }
 
 static SDL_bool
@@ -1065,7 +1063,7 @@ xo_check_board_full (struct board_data *board_data)
     {
       for (uint8_t row = 0; row < BOARD_SIZE; row++)
         {
-          if (xo_check_if_bit (board_data, EMPTY, col, row) == SDL_TRUE)
+          if (xo_board_bit_check_at (board_data, EMPTY, col, row) == SDL_TRUE)
             {
               is_full = SDL_FALSE;
             }
@@ -1091,7 +1089,7 @@ xo_check_side_win_state (struct board_data *board_data,
       column_win = SDL_TRUE;
       for (uint8_t col = 0; col < BOARD_SIZE && column_win; col++)
         {
-          if (xo_check_if_bit (board_data, side, col, row) == SDL_FALSE)
+          if (xo_board_bit_check_at (board_data, side, col, row) == SDL_FALSE)
             {
               column_win = SDL_FALSE;
             }
@@ -1109,7 +1107,7 @@ xo_check_side_win_state (struct board_data *board_data,
       row_win = SDL_TRUE;
       for (uint8_t row = 0; row < BOARD_SIZE && row_win; row++)
         {
-          if (xo_check_if_bit (board_data, side, col, row) == SDL_FALSE)
+          if (xo_board_bit_check_at (board_data, side, col, row) == SDL_FALSE)
             {
               row_win = SDL_FALSE;
             }
@@ -1124,7 +1122,7 @@ xo_check_side_win_state (struct board_data *board_data,
   SDL_bool diag_win = SDL_TRUE;
   for (uint8_t dia = 0; dia < BOARD_SIZE; dia++)
     {
-      if (xo_check_if_bit (board_data, side, dia, dia) == SDL_FALSE)
+      if (xo_board_bit_check_at (board_data, side, dia, dia) == SDL_FALSE)
         {
           diag_win = SDL_FALSE;
         }
@@ -1140,7 +1138,7 @@ xo_check_side_win_state (struct board_data *board_data,
     {
       /* Order on column value start from the end of the board for diagonal 2.
        */
-      if (xo_check_if_bit (board_data, side, BOARD_SIZE - (dia + 1), dia)
+      if (xo_board_bit_check_at (board_data, side, BOARD_SIZE - (dia + 1), dia)
           == SDL_FALSE)
         {
           diag_win = SDL_FALSE;
@@ -1182,54 +1180,55 @@ xo_test_if_game_over (struct board_data *board_data)
 /**
  * Plays the move for the player.
  * @param app
- * @param col
- * @param row
+ * @param mouse_x
+ * @param mouse_y
  * @return Whether the player move was successful. The move can fail if the
  * tile clicked already contains something.
  */
 static SDL_bool
-xo_player_move (struct app *app, int col, int row)
+xo_player_move (struct app *app, int mouse_x, int mouse_y)
 {
 
-  int tile_x = -1;
-  int tile_y = -1;
+  int col = -1;
+  int row = -1;
 
-  if (col < WINDOW_SIZE / 3)
+  if (mouse_x < WINDOW_SIZE / 3)
     {
       // Player clicked in the left third of the window
-      tile_x = 0;
+      col = 0;
     }
-  else if (col < WINDOW_SIZE * 2 / 3)
+  else if (mouse_x < WINDOW_SIZE * 2 / 3)
     {
       // Player clicked in the middle third of the window
-      tile_x = 1;
+      col = 1;
     }
   else
     {
       // Player clicked in the right third of the window
-      tile_x = 2;
+      col = 2;
     }
 
-  if (row < WINDOW_SIZE / 3)
+  if (mouse_y < WINDOW_SIZE / 3)
     {
       // Player clicked in the top third of the window
-      tile_y = 0;
+      row = 0;
     }
-  else if (row < WINDOW_SIZE * 2 / 3)
+  else if (mouse_y < WINDOW_SIZE * 2 / 3)
     {
       // Player clicked in the middle third of the window
-      tile_y = 1;
+      row = 1;
     }
   else
     {
       // Player clicked in the bottom third of the window
-      tile_y = 2;
+      row = 2;
     }
-  xo_log_debug (1, SDL_FALSE, "Tile clicked: %d, %d.", tile_x, tile_y);
-  if (xo_check_if_bit (app->game->board->data, EMPTY, tile_x, tile_y))
+  xo_log_debug (1, SDL_FALSE, "Tile clicked: %d, %d.", col, row);
+  if (xo_board_bit_check_at (app->game->board->data, EMPTY, col, row))
     {
       xo_log_debug (1, SDL_FALSE, "It was empty! Placing X");
-      xo_place (app->game->board->data, 0, tile_x, tile_y);
+      xo_board_bit_clear_at (app->game->board->data, EMPTY, col, row);
+      xo_board_bit_set_at (app->game->board->data, X, col, row);
       return SDL_TRUE;
     }
   else
@@ -1242,9 +1241,10 @@ xo_player_move (struct app *app, int col, int row)
 static void
 xo_computer_move (struct app *app, int col, int row)
 {
-  if (xo_check_if_bit (app->game->board->data, EMPTY, col, row))
+  if (xo_board_bit_check_at (app->game->board->data, EMPTY, col, row))
     {
-      xo_place (app->game->board->data, 1, col, row);
+      xo_board_bit_clear_at (app->game->board->data, EMPTY, col, row);
+      xo_board_bit_set_at (app->game->board->data, O, col, row);
     }
 }
 
@@ -1293,7 +1293,7 @@ xo_generate_moves_bad (struct app *app)
         }
       for (int col = 0; col < 3; col++)
         {
-          if (xo_check_if_bit (app->game->board->data, EMPTY, col, row)
+          if (xo_board_bit_check_at (app->game->board->data, EMPTY, col, row)
               == SDL_TRUE)
             {
               xo_computer_move (app, col, row);
@@ -1334,7 +1334,7 @@ xo_minimax (struct board_data *last_board,
     {
       for (uint8_t row = 0; row < 3; row++)
         {
-          if (xo_check_if_bit (last_board, EMPTY, col, row) == SDL_TRUE)
+          if (xo_board_bit_check_at (last_board, EMPTY, col, row) == SDL_TRUE)
             {
               struct board_data *new_board
                   = (struct board_data *)xo_stack_alloc (
@@ -1347,7 +1347,8 @@ xo_minimax (struct board_data *last_board,
               memcpy (new_board->tiles, last_board->tiles,
                       sizeof (uint8_t) * BOARD_SIZE * BOARD_SIZE);
 
-              xo_place (new_board, (uint8_t)simulated_side, col, row);
+              xo_board_bit_set_at (new_board, (uint8_t)simulated_side, col,
+                                   row);
 
               struct cpu_response simulated_response
                   = xo_minimax (new_board, simulated_side == O ? X : O);
@@ -1403,7 +1404,7 @@ xo_generate_moves (struct app *app)
 }
 
 int32_t
-close_app (int32_t code)
+xo_close_app (int32_t code)
 {
   xo_stack_destroy (generic);
   SDL_Quit ();
@@ -1435,7 +1436,7 @@ main (int argc, char *argv[])
   if (app == NULL)
     {
       xo_log_error (SDL_TRUE, "Failed to allocate memory for app\n");
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   app->game = (struct game *)xo_stack_alloc (generic, sizeof (struct game));
@@ -1443,7 +1444,7 @@ main (int argc, char *argv[])
   if (app->game == NULL)
     {
       xo_log_error (SDL_TRUE, "Failed to allocate memory for game\n");
-      return close_app (1);
+      return xo_close_app (1);
     }
   app->game->game_state = GAME_STATE_NULL;
 
@@ -1451,31 +1452,31 @@ main (int argc, char *argv[])
   if (SDL_Init (init_flags) < 0)
     {
       xo_log_error (SDL_TRUE, "SDL_Init Error: %s\n", SDL_GetError ());
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   if (TTF_Init () < 0)
     {
       xo_log_error (SDL_TRUE, "TTF_Init Error: %s\n", TTF_GetError ());
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   if (IMG_Init (image_flags) != image_flags)
     {
       xo_log_error (SDL_TRUE, "IMG_Init Error: %s\n", IMG_GetError ());
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   if (Mix_Init (mixer_flags) != mixer_flags)
     {
       xo_log_error (SDL_TRUE, "Mix_Init Error: %s\n", Mix_GetError ());
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   if (Mix_OpenAudio (44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
     {
       xo_log_error (SDL_TRUE, "Mix_OpenAudio Error: %s\n", Mix_GetError ());
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   app->window = SDL_CreateWindow ("Tic-Tac-Toe", SDL_WINDOWPOS_CENTERED,
@@ -1485,7 +1486,7 @@ main (int argc, char *argv[])
   if (app->window == NULL)
     {
       xo_log_error (SDL_TRUE, "SDL_CreateWindow Error: %s\n", SDL_GetError ());
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   app->renderer = SDL_CreateRenderer (app->window, -1, renderer_flags);
@@ -1494,7 +1495,7 @@ main (int argc, char *argv[])
     {
       xo_log_error (SDL_TRUE, "SDL_CreateRenderer Error: %s\n",
                     SDL_GetError ());
-      return close_app (1);
+      return xo_close_app (1);
     }
 
   SDL_ShowCursor (SDL_DISABLE);
@@ -1578,6 +1579,6 @@ main (int argc, char *argv[])
       SDL_RenderPresent (app->renderer);
     }
 
-  close_app (0);
+  xo_close_app (0);
   return 0;
 }
