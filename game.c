@@ -175,65 +175,6 @@ xo_log_error (SDL_bool b_is_critical, const char *format, ...)
   va_end (args);
 }
 
-/// MEMORY
-
-/**
- * Allocate a new stack (zeroed out).
- * @param size Total size of the stack
- * @return
- */
-static struct xo_stack *
-xo_stack_new (size_t size)
-{
-  struct xo_stack *stack
-      = (struct xo_stack *)calloc (1, sizeof (struct xo_stack));
-  if (stack)
-    {
-      stack->bits = calloc (1, size);
-      stack->size = size;
-      stack->offset = 0;
-      return stack;
-    }
-  return NULL;
-}
-
-/**
- * Allocate a block of memory from the provided stack.
- * @param stack Stack to allocate from
- * @param size Chunk size to allocate
- * @return Pointer to the allocated memory
- */
-static void *
-xo_stack_alloc (struct xo_stack *stack, size_t size)
-{
-  SDL_assert (stack->offset + size <= stack->size && "Stack overflow!");
-  void *ptr = (char *)stack->bits + stack->offset;
-  stack->offset += size;
-  return ptr;
-}
-
-/**
- * Reset a stack offset, thus essentially erasing over old memory as we begin
- * writing anew. This doesn't clear the previous memory.
- * @param stack
- */
-void
-xo_stack_reset (struct xo_stack *stack)
-{
-  stack->offset = 0;
-}
-
-/**
- * Destroys a stack completely, rendering it useless.
- * @param stack
- */
-void
-xo_stack_destroy (struct xo_stack *stack)
-{
-  free (stack->bits);
-  free (stack);
-}
-
 /// UTILITIES
 
 /**
@@ -780,8 +721,7 @@ xo_init_make_board (struct xo_app *app, SDL_Surface *surfaces[])
   xo_log_debug (1, SDL_FALSE, "Making board...\n");
 
   // Alloc memory for the board struct within game
-  app->game->board
-      = (struct xo_board *)xo_stack_alloc (generic, sizeof (struct xo_board));
+  app->game->board = (struct xo_board *)calloc (1, sizeof (struct xo_board));
 
   SDL_Surface *board = SDL_CreateRGBSurfaceWithFormat (
       0, (XO_TILE_SIZE * XO_BOARD_SIZE) + XO_BORDER,
@@ -795,8 +735,8 @@ xo_init_make_board (struct xo_app *app, SDL_Surface *surfaces[])
       return 1;
     }
 
-  app->game->board->data = (struct xo_board_data *)xo_stack_alloc (
-      generic, sizeof (struct xo_board_data));
+  app->game->board->data
+      = (struct xo_board_data *)calloc (1, sizeof (struct xo_board_data));
   if (app->game->board->data == NULL)
     {
       return 1;
@@ -961,8 +901,8 @@ xo_init_load_clips (struct xo_app *app)
 
   // Allocate memory for the music pointers
   // based on the number of files found
-  app->musics = (Mix_Music **)xo_stack_alloc (
-      generic, (size_t)app->music_max * sizeof (Mix_Music *));
+  app->musics = (Mix_Music **)calloc (1, (size_t)app->music_max
+                                             * sizeof (Mix_Music *));
 
   // Loop through the directory again to load the music
   cur_dir = opendir (XO_CLIP_PATH);
@@ -1044,8 +984,8 @@ xo_init_load_fonts (struct xo_app *app)
   closedir (cur_dir);
 
   // Allocate memory for the fonts
-  app->fonts = (TTF_Font ***)xo_stack_alloc (
-      generic, (size_t)app->font_max * sizeof (TTF_Font **));
+  app->fonts
+      = (TTF_Font ***)calloc (1, (size_t)app->font_max * sizeof (TTF_Font **));
 
   cur_dir = opendir (XO_FONT_PATH);
   int f = 0; // current file index
@@ -1062,8 +1002,8 @@ xo_init_load_fonts (struct xo_app *app)
           xo_log_debug (1, SDL_FALSE, "Loading font: %s\n", file_path);
 
           // Allocate memory for the font and its size variants
-          *(app->fonts + f) = (TTF_Font **)xo_stack_alloc (
-              generic, (size_t)XO_FONT_SIZES * sizeof (TTF_Font *));
+          *(app->fonts + f) = (TTF_Font **)calloc (
+              1, (size_t)XO_FONT_SIZES * sizeof (TTF_Font *));
 
           int current_size = 8;
           // Load the font at different sizes
@@ -1127,8 +1067,8 @@ xo_init_load_images (struct xo_app *app)
                 tileset_w, tileset_h);
 
   app->image_max = cols * rows;
-  SDL_Surface **surface_pieces = (SDL_Surface **)xo_stack_alloc (
-      generic, (size_t)app->image_max * sizeof (SDL_Surface *));
+  SDL_Surface **surface_pieces = (SDL_Surface **)calloc (
+      1, (size_t)app->image_max * sizeof (SDL_Surface *));
   if (surface_pieces == NULL)
     {
       xo_log_error (
@@ -1464,8 +1404,8 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
               /* Create a copy of the board data, set the empty square as
                * marked by the simulated_side. */
               struct xo_board_data *new_board
-                  = (struct xo_board_data *)xo_stack_alloc (
-                      minimax_stack, sizeof (struct xo_board_data));
+                  = (struct xo_board_data *)calloc (
+                      1, sizeof (struct xo_board_data));
 
               memcpy (new_board->squares, last_board->squares,
                       sizeof (uint8_t) * XO_BOARD_SIZE * XO_BOARD_SIZE);
@@ -1501,11 +1441,11 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
                       move_found = SDL_TRUE;
                     }
                 }
+
+              free (new_board);
             }
         }
     }
-
-  xo_stack_reset (minimax_stack);
 
   new_response.score = best_score;
   new_response.has_move = move_found;
@@ -1525,7 +1465,7 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
 // NOW DISABLED
 
 // static SDL_Point
-//xo_game_cpu_find_next_play_BAD (struct xo_app *app)
+// xo_game_cpu_find_next_play_BAD (struct xo_app *app)
 //{
 //  for (int row = 0; row < 3; row++)
 //    {
@@ -1551,8 +1491,6 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
 static SDL_Point
 xo_game_cpu_find_next_play (struct xo_app *app)
 {
-  xo_stack_reset (minimax_stack);
-
   xo_log_debug (1, SDL_FALSE, "CPU begins looking for move. . .");
 
   struct xo_cpu_response response = xo_game_cpu_minimax_eval (
@@ -1567,7 +1505,6 @@ xo_game_cpu_find_next_play (struct xo_app *app)
 int32_t
 xo_exit (int32_t code)
 {
-  xo_stack_destroy (generic);
   SDL_Quit ();
   exit (code);
   return code;
@@ -1578,10 +1515,6 @@ xo_exit (int32_t code)
 int
 main (int argc, char *argv[])
 {
-
-  generic = xo_stack_new (1000);
-  minimax_stack = xo_stack_new (1000);
-
   /* The game begins by initializing SDL2 with various flags */
   Uint32 init_flags = SDL_INIT_EVERYTHING;
   Uint32 window_flags = SDL_WINDOW_SHOWN;
@@ -1591,8 +1524,7 @@ main (int argc, char *argv[])
 
   /* Memory allocation for app */
 
-  struct xo_app *app
-      = (struct xo_app *)xo_stack_alloc (generic, sizeof (struct xo_app));
+  struct xo_app *app = (struct xo_app *)calloc (1, sizeof (struct xo_app));
 
   if (app == NULL)
     {
@@ -1600,8 +1532,7 @@ main (int argc, char *argv[])
       return xo_exit (1);
     }
 
-  app->game
-      = (struct xo_game *)xo_stack_alloc (generic, sizeof (struct xo_game));
+  app->game = (struct xo_game *)calloc (1, sizeof (struct xo_game));
 
   if (app->game == NULL)
     {
