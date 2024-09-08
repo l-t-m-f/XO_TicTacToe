@@ -23,9 +23,9 @@
 
 enum xo_win_state_type
 {
-  XO_WIN_STATE_LOSE = -1,
+  XO_WIN_STATE_X_WIN = -1,
   XO_WIN_STATE_TIE = 0,
-  XO_WIN_STATE_WIN = 1,
+  XO_WIN_STATE_O_WIN = 1,
   XO_WIN_STATE_NONE = 2,
 };
 
@@ -396,14 +396,32 @@ xo_win_state_type_to_string (enum xo_win_state_type type)
 {
   switch (type)
     {
-    case XO_WIN_STATE_LOSE:
+    case XO_WIN_STATE_O_WIN:
       return "Lose";
     case XO_WIN_STATE_TIE:
       return "Tie";
-    case XO_WIN_STATE_WIN:
+    case XO_WIN_STATE_X_WIN:
       return "Win";
     case XO_WIN_STATE_NONE:
       return "None";
+    }
+}
+
+static const char *
+xo_bit_meaning_type_to_string (enum xo_bit_meaning_type type)
+{
+  switch (type)
+    {
+    case XO_BIT_MEANING_EMPTY:
+      return "Empty";
+    case XO_BIT_MEANING_SIDE_X:
+      return "X";
+    case XO_BIT_MEANING_SIDE_O:
+      return "O";
+    case XO_BIT_MEANING_HOVER:
+      return "Hover";
+    case XO_BIT_MEANING_CLICK:
+      return "Click";
     }
 }
 
@@ -1218,12 +1236,12 @@ xo_board_test_if_final_state (struct xo_board_data *board_data)
   if (xo_board_validate_win_conditions_for (board_data, XO_BIT_MEANING_SIDE_X)
       == SDL_TRUE)
     {
-      return XO_WIN_STATE_WIN;
+      return XO_WIN_STATE_X_WIN;
     }
   if (xo_board_validate_win_conditions_for (board_data, XO_BIT_MEANING_SIDE_O)
       == SDL_TRUE)
     {
-      return XO_WIN_STATE_LOSE;
+      return XO_WIN_STATE_O_WIN;
     }
   if (xo_board_check_if_full (board_data) == SDL_TRUE)
     {
@@ -1306,10 +1324,8 @@ xo_mouse_to_square (struct xo_app *app, int mouse_x, int mouse_y)
 
 static struct xo_cpu_response
 xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
-                          enum xo_bit_meaning_type simulated_side)
+                          enum xo_bit_meaning_type side)
 {
-  xo_log_debug (1, SDL_FALSE, "New minimax branch opened . . .");
-
   struct xo_cpu_response new_response;
 
   /* Checks if the game is over (someone won or the board is full) */
@@ -1320,7 +1336,7 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
   if (board_win_state != XO_WIN_STATE_NONE)
     {
       xo_log_debug (
-          1, SDL_FALSE, "CPU found a terminal move of type: %s with score %d",
+          2, SDL_FALSE, "CPU found a terminal move of type: %s with score %d",
           xo_win_state_type_to_string (board_win_state), board_win_state);
       new_response.score = (int32_t)board_win_state;
       new_response.has_move = SDL_FALSE;
@@ -1328,14 +1344,9 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
     }
 
   /* Set the best score depending on which side is simulated. */
-  int32_t best_score
-      = simulated_side == XO_BIT_MEANING_SIDE_O ? INT32_MIN : INT32_MAX;
+  int32_t best_score = side == XO_BIT_MEANING_SIDE_O ? INT32_MIN : INT32_MAX;
   SDL_Point best_move;
   SDL_bool move_found = SDL_FALSE;
-
-  /* Resets the special stack to 0 (clear the previous branching from memory)
-   */
-  xo_stack_reset (minimax_stack);
 
   /* Iterates over the board */
   for (uint8_t col = 0; col < 3; col++)
@@ -1352,37 +1363,36 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
               struct xo_board_data *new_board
                   = (struct xo_board_data *)xo_stack_alloc (
                       minimax_stack, sizeof (struct xo_board_data));
+
               memcpy (new_board->squares, last_board->squares,
                       sizeof (uint8_t) * XO_BOARD_SIZE * XO_BOARD_SIZE);
 
               xo_board_bit_clear_at (new_board, XO_BIT_MEANING_EMPTY, col,
                                      row);
-              xo_board_bit_set_at (new_board, (uint8_t)simulated_side, col,
-                                   row);
+              xo_board_bit_set_at (new_board, (uint8_t)side, col, row);
 
               /* Create a nested minimax evaluation using that new board as a
                * root. */
-              struct xo_cpu_response simulated_response
-                  = xo_game_cpu_minimax_eval (
-                      new_board, simulated_side == XO_BIT_MEANING_SIDE_O
-                                     ? XO_BIT_MEANING_SIDE_X
-                                     : XO_BIT_MEANING_SIDE_O);
+              struct xo_cpu_response response = xo_game_cpu_minimax_eval (
+                  new_board, side == XO_BIT_MEANING_SIDE_O
+                                 ? XO_BIT_MEANING_SIDE_X
+                                 : XO_BIT_MEANING_SIDE_O);
 
-              if (simulated_side == XO_BIT_MEANING_SIDE_O)
+              if (side == XO_BIT_MEANING_SIDE_O)
                 {
-                  if (simulated_response.score > best_score)
+                  if (response.score > best_score)
                     {
-                      best_score = simulated_response.score;
+                      best_score = response.score;
                       best_move.x = col;
                       best_move.y = row;
                       move_found = SDL_TRUE;
                     }
                 }
-              else if (simulated_side == XO_BIT_MEANING_SIDE_X)
+              else if (side == XO_BIT_MEANING_SIDE_X)
                 {
-                  if (simulated_response.score < best_score)
+                  if (response.score < best_score)
                     {
-                      best_score = simulated_response.score;
+                      best_score = response.score;
                       best_move.x = col;
                       best_move.y = row;
                       move_found = SDL_TRUE;
@@ -1391,6 +1401,9 @@ xo_game_cpu_minimax_eval (struct xo_board_data *last_board,
             }
         }
     }
+
+  xo_stack_reset (minimax_stack);
+
   new_response.score = best_score;
   new_response.has_move = move_found;
   if (move_found)
@@ -1433,7 +1446,7 @@ xo_game_cpu_find_next_play_BAD (struct xo_app *app)
 static SDL_Point
 xo_game_cpu_find_next_play (struct xo_app *app)
 {
-  minimax_stack = xo_stack_new (10000);
+  xo_stack_reset (minimax_stack);
 
   xo_log_debug (1, SDL_FALSE, "CPU begins looking for move. . .");
 
@@ -1443,7 +1456,6 @@ xo_game_cpu_find_next_play (struct xo_app *app)
   xo_log_debug (1, SDL_FALSE, "CPU brain returned move %d, %d with score %d",
                 response.move.x, response.move.y, response.score);
 
-  xo_stack_destroy (minimax_stack);
 
   return response.move;
 }
@@ -1464,6 +1476,7 @@ main (int argc, char *argv[])
 {
 
   generic = xo_stack_new (1000);
+  minimax_stack = xo_stack_new (1000);
 
   /* The game begins by initializing SDL2 with various flags */
   Uint32 init_flags = SDL_INIT_EVERYTHING;
@@ -1597,9 +1610,13 @@ main (int argc, char *argv[])
                       == SDL_TRUE)
                     {
                       SDL_Point cpu_play = xo_game_cpu_find_next_play (app);
+                      if (xo_board_test_if_final_state (app->game->board->data)
+                          != XO_WIN_STATE_NONE)
+                        {
+                          xo_exit (0);
+                        }
                       xo_game_play (app, XO_BIT_MEANING_SIDE_O, cpu_play.x,
                                     cpu_play.y);
-                      xo_board_test_if_final_state (app->game->board->data);
                     }
                 }
             }
