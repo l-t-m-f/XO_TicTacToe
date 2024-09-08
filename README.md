@@ -1,5 +1,5 @@
 # XO - Tic-Tac-Toe
-A simple game of Tic-Tac-Toe made with minimal C99 and SDL2. With a full graphical wrapping, music, AI.
+A simple game of Tic-Tac-Toe made with minimal C99 and SDL2. With a full graphical wrapping, music, minimax AI.
 
 <img src="https://github.com/user-attachments/assets/af216683-ef0c-4e81-b9e4-cb8d226e48d9" width="240" />
 
@@ -10,5 +10,5 @@ A simple game of Tic-Tac-Toe made with minimal C99 and SDL2. With a full graphic
 
 - Better menu
 - Game over
-- AI Fixes
 - Side choosing!
+- Restart
